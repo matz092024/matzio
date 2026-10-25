@@ -25,6 +25,11 @@ function subscribe<T>(channel: string, cb: (value: T) => void) {
 
 const api = {
   platform: process.platform,
+  storage: {
+    /** Everything saved on disk. Synchronous so data is ready before the first render. */
+    load: (): Record<string, unknown> => ipcRenderer.sendSync('store:load'),
+    write: (key: string, value: unknown) => ipcRenderer.send('store:write', key, value)
+  },
   player: {
     play: (req: PlayRequest): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke('player:play', req),
     stop: (): Promise<void> => ipcRenderer.invoke('player:stop'),

@@ -22,6 +22,10 @@ npm rebuild electron esbuild
 
 Video plays in [mpv](https://mpv.io). Matzio looks for it in this order: the path in Settings → Player, `resources/mpv` (from `npm run fetch-mpv`), your `PATH`, then common install folders. If it isn't found, click **Browse…** in Settings and select `mpv.exe` from the folder you unzipped.
 
+## Your data
+
+Installed addons, settings, library and Continue Watching are saved as JSON files in `%APPDATA%\Matzio\data`. Installing a newer version upgrades the app in place and leaves that folder alone, and uninstalling keeps it too. Data from older builds (which kept it in browser storage) is moved there automatically the first time a new build opens.
+
 ## Roadmap
 
 1. App shell and dark glass design system

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { readJson, writeJson } from './storage'
 
 export interface Settings {
   /** Lowers overall brightness and contrast for late-night watching. */
@@ -24,12 +25,7 @@ const defaults: Settings = {
 const STORAGE_KEY = 'matzio.settings'
 
 function load(): Settings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? { ...defaults, ...JSON.parse(raw) } : defaults
-  } catch {
-    return defaults
-  }
+  return { ...defaults, ...readJson<Partial<Settings>>(STORAGE_KEY, {}) }
 }
 
 const SettingsContext = createContext<{
@@ -41,11 +37,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(load)
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    } catch {
-      // Storage can be unavailable; settings then last for this session only.
-    }
+    writeJson(STORAGE_KEY, settings)
     const root = document.documentElement
     root.dataset.night = String(settings.nightDim)
     root.dataset.motion = settings.reduceMotion ? 'reduce' : 'full'
