@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import Poster, { PosterSkeleton } from '../components/Poster'
 import { SearchIcon } from '../components/Icons'
 import { useAddons } from '../stremio/addons'
@@ -20,6 +21,13 @@ function dedupe(metas: MetaPreview[]) {
 
 export default function Discover() {
   const { addons } = useAddons()
+  const location = useLocation()
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // Opened with the search shortcut: put the cursor in the search box.
+  useEffect(() => {
+    if ((location.state as { focusSearch?: boolean } | null)?.focusSearch) searchRef.current?.focus()
+  }, [location])
 
   const sources: Source[] = useMemo(
     () =>
@@ -114,7 +122,7 @@ export default function Discover() {
         <h1 className="page-title">Discover</h1>
         <label className="search glass">
           <SearchIcon width={16} height={16} />
-          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Search ${(typeLabels[activeType] ?? activeType).toLowerCase()}`} />
+          <input ref={searchRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Search ${(typeLabels[activeType] ?? activeType).toLowerCase()}`} />
         </label>
       </header>
 

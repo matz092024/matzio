@@ -32,6 +32,8 @@ const ProgressContext = createContext<{
   latestFor: (metaId: string) => WatchEntry | undefined
   /** Registers what is about to play, so progress from the player can be filed under it. */
   begin: (entry: Omit<WatchEntry, 'position' | 'duration' | 'updatedAt'>) => void
+  /** Forgets progress for every video of a title (used by Continue watching's remove button). */
+  forget: (metaId: string) => void
 } | null>(null)
 
 export function ProgressProvider({ children }: { children: ReactNode }) {
@@ -70,7 +72,10 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
       return { ...all, [e.videoId]: { ...e, position: prev?.position ?? 0, duration: prev?.duration ?? 0, updatedAt: prev?.updatedAt ?? Date.now() } }
     })
 
-  return <ProgressContext.Provider value={{ entries, get, latestFor, begin }}>{children}</ProgressContext.Provider>
+  const forget = (metaId: string) =>
+    setEntries((all) => Object.fromEntries(Object.entries(all).filter(([, e]) => e.metaId !== metaId)))
+
+  return <ProgressContext.Provider value={{ entries, get, latestFor, begin, forget }}>{children}</ProgressContext.Provider>
 }
 
 export function useProgress() {

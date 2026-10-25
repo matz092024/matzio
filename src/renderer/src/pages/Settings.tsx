@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useSettings, type Settings as S } from '../settings'
 import AddonsSettings from '../components/AddonsSettings'
 import PlayerSetting from '../components/PlayerSetting'
+import { shortcutList } from '../shortcuts'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -72,6 +73,19 @@ export default function Settings() {
       </section>
 
       <AddonsSettings />
+
+      <section className="settings-group glass">
+        <h2 className="settings-heading">Keyboard</h2>
+        <dl className="shortcuts">
+          {shortcutList.map(([keys, action]) => (
+            <div key={action}>
+              <dt>{keys.map((k) => <kbd key={k}>{k}</kbd>)}</dt>
+              <dd>{action}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="setting-hint">In the player, mpv’s own keys work: Space to pause, ← → to skip, F for full screen, Q to quit.</p>
+      </section>
     </div>
   )
 }

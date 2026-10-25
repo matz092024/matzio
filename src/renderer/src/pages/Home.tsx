@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import CatalogRow, { useCatalog } from '../components/CatalogRow'
 import Hero from '../components/Hero'
+import ContinueRow from '../components/ContinueRow'
 import { useAddons } from '../stremio/addons'
 import { catalogExtras } from '../stremio/client'
 
@@ -33,6 +34,7 @@ export default function Home() {
   return (
     <div className="page">
       {hero ? <Hero meta={hero} eyebrow="Featured" /> : <section className="hero glass skeleton" />}
+      <ContinueRow />
       {rows.map(({ addon, catalog }) => (
         <CatalogRow key={`${addon.transportUrl}|${catalog.type}|${catalog.id}`} addon={addon} catalog={catalog} />
       ))}
