@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useSettings, type Settings as S } from '../settings'
+import AddonsSettings from '../components/AddonsSettings'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -68,10 +69,7 @@ export default function Settings() {
         </Item>
       </section>
 
-      <section className="settings-group glass">
-        <h2 className="settings-heading">Addons</h2>
-        <p className="setting-hint">Installing Stremio addons by URL arrives in the next step.</p>
-      </section>
+      <AddonsSettings />
     </div>
   )
 }
