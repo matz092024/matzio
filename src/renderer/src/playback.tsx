@@ -111,8 +111,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       mpvPath: settings.mpvPath || undefined
     })
     if (result.ok) setStatus({ kind: 'playing', text: `Playing ${title}` })
-    else if (result.error === 'mpv-missing') setStatus({ kind: 'error', text: 'mpv isn’t installed or couldn’t be found.', settingsLink: true })
-    else setStatus({ kind: 'error', text: result.error })
+    else if (result.error === 'mpv-missing') setStatus({ kind: 'error', text: 'mpv couldn’t be found. Select mpv.exe in Settings.', settingsLink: true })
+    else setStatus({ kind: 'error', text: result.error, settingsLink: true })
   }
 
   const play: PlaybackContextValue['play'] = async (preview, video, options) => {

@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
-import { findMpv, Player, type PlayRequest } from './player'
+import { detectMpv, Player, type PlayRequest } from './player'
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -27,7 +27,7 @@ function createWindow(): BrowserWindow {
   win.on('unmaximize', () => win.webContents.send('window:maximized', false))
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    if (/^https?:\/\//.test(url)) shell.openExternal(url).catch(() => {})
     return { action: 'deny' }
   })
 
@@ -58,9 +58,25 @@ const player = new Player(
   (p) => broadcast('player:ended', p)
 )
 
-ipcMain.handle('player:play', (_e, req: PlayRequest) => player.play(req))
+ipcMain.handle('player:play', (_e, req: PlayRequest) => {
+  try {
+    return player.play(req)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
 ipcMain.handle('player:stop', () => player.stop())
-ipcMain.handle('player:detect', (_e, custom?: string) => findMpv(custom))
+ipcMain.handle('player:detect', (_e, custom?: string) => detectMpv(custom))
+ipcMain.handle('player:browse', async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender)
+  const options = {
+    title: 'Select mpv.exe',
+    properties: ['openFile' as const],
+    filters: process.platform === 'win32' ? [{ name: 'mpv', extensions: ['exe'] }] : []
+  }
+  const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+  return result.canceled ? null : result.filePaths[0] ?? null
+})
 
 app.whenReady().then(() => {
   createWindow()

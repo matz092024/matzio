@@ -28,7 +28,8 @@ const api = {
   player: {
     play: (req: PlayRequest): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke('player:play', req),
     stop: (): Promise<void> => ipcRenderer.invoke('player:stop'),
-    detect: (customPath?: string): Promise<string | null> => ipcRenderer.invoke('player:detect', customPath),
+    detect: (customPath?: string): Promise<{ path: string | null; customOk: boolean | null }> => ipcRenderer.invoke('player:detect', customPath),
+    browse: (): Promise<string | null> => ipcRenderer.invoke('player:browse'),
     onProgress: (cb: (p: PlayerProgress) => void) => subscribe('player:progress', cb),
     onEnded: (cb: (p: PlayerProgress & { error?: string }) => void) => subscribe('player:ended', cb)
   },

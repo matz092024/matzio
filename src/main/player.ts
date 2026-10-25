@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
-import { existsSync } from 'fs'
+import { statSync } from 'fs'
 import { connect, type Socket } from 'net'
 import { tmpdir } from 'os'
 import { delimiter, join } from 'path'
@@ -27,9 +27,16 @@ export interface PlayerProgress {
 const isWindows = process.platform === 'win32'
 const exe = isWindows ? 'mpv.exe' : 'mpv'
 
+/** Accepts what people paste: quoted paths ("Copy as path" adds quotes) and the folder mpv is in. */
+function normalizeCustom(input: string): string[] {
+  const path = input.trim().replace(/^"(.*)"$/, '$1').trim()
+  if (!path) return []
+  return path.toLowerCase().endsWith('.exe') || !isWindows ? [path, join(path, exe)] : [join(path, exe), path]
+}
+
 function candidates(custom?: string): string[] {
   const list: string[] = []
-  if (custom) list.push(custom)
+  if (custom) list.push(...normalizeCustom(custom))
   // Bundled copy, shipped with the installer in a later step.
   list.push(join(process.resourcesPath ?? '', 'mpv', exe))
   list.push(join(app.getAppPath(), 'resources', 'mpv', exe))
@@ -48,14 +55,33 @@ function candidates(custom?: string): string[] {
   return list
 }
 
+/**
+ * Real executables only. Windows "app execution aliases" (0-byte stubs in WindowsApps, which is on PATH)
+ * look like mpv.exe but can't be started directly and fail with EFTYPE, so they're skipped.
+ */
+function isRunnable(p: string) {
+  try {
+    const st = statSync(p)
+    if (!st.isFile() || st.size === 0) return false
+    return isWindows ? p.toLowerCase().endsWith('.exe') : (st.mode & 0o111) !== 0
+  } catch {
+    return false
+  }
+}
+
+export function findAllMpv(custom?: string): string[] {
+  return [...new Set(candidates(custom))].filter(isRunnable)
+}
+
 export function findMpv(custom?: string): string | null {
-  return candidates(custom).find((p) => {
-    try {
-      return existsSync(p)
-    } catch {
-      return false
-    }
-  }) ?? null
+  return findAllMpv(custom)[0] ?? null
+}
+
+/** What Settings shows: the mpv that will be used, and whether the path the user set works. */
+export function detectMpv(custom?: string): { path: string | null; customOk: boolean | null } {
+  const path = findMpv(custom)
+  if (!custom?.trim()) return { path, customOk: null }
+  return { path, customOk: normalizeCustom(custom).some(isRunnable) }
 }
 
 /** One mpv window at a time; starting a new stream replaces the current one. */
@@ -70,8 +96,8 @@ export class Player {
   ) {}
 
   play(req: PlayRequest): { ok: true } | { ok: false; error: string } {
-    const mpv = findMpv(req.mpvPath)
-    if (!mpv) return { ok: false, error: 'mpv-missing' }
+    const found = findAllMpv(req.mpvPath)
+    if (found.length === 0) return { ok: false, error: 'mpv-missing' }
 
     this.stop()
     this.progress = { key: req.key, position: req.start ?? 0, duration: 0 }
@@ -98,12 +124,28 @@ export class Player {
     }
     args.push('--', req.url)
 
-    const proc = spawn(mpv, args, { stdio: 'ignore', windowsHide: false })
+    // spawn throws straight away for files Windows can't run (EFTYPE, EACCES), so fall through to the next copy.
+    let proc: ChildProcess | null = null
+    const failures: string[] = []
+    for (const mpv of found) {
+      try {
+        proc = spawn(mpv, args, { stdio: 'ignore', windowsHide: false })
+        break
+      } catch (e) {
+        failures.push(`${mpv} (${(e as NodeJS.ErrnoException).code ?? (e as Error).message})`)
+      }
+    }
+    if (!proc) return { ok: false, error: `Couldn’t start mpv: ${failures.join(', ')}` }
     this.proc = proc
     let spawnError: string | undefined
 
     proc.on('error', (e) => {
       spawnError = e.message
+      // A process that never started won't emit 'exit', so report the failure here.
+      if (proc.pid === undefined && this.proc === proc) {
+        this.proc = null
+        this.onEnded({ ...this.progress, error: spawnError })
+      }
     })
     proc.on('exit', () => {
       if (this.proc !== proc) return
