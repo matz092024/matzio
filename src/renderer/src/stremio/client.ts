@@ -1,4 +1,4 @@
-import type { ContentType, InstalledAddon, Manifest, ManifestCatalog, MetaDetail, MetaPreview } from './types'
+import type { ContentType, InstalledAddon, Manifest, ManifestCatalog, MetaDetail, MetaPreview, Stream } from './types'
 
 /** Accepts stremio:// links, bare base URLs, and full manifest URLs. */
 export function normalizeManifestUrl(input: string): string {
@@ -91,4 +91,24 @@ export async function fetchMeta(addons: InstalledAddon[], type: ContentType, id:
     }
   }
   throw lastError ?? new Error('None of your addons have details for this title.')
+}
+
+export interface AddonStream extends Stream {
+  addon: string
+}
+
+/** Streams from every addon that has them, in install order, so the first one is the top pick. */
+export async function fetchStreams(addons: InstalledAddon[], type: ContentType, id: string, signal?: AbortSignal) {
+  const sources = addons.filter((a) => supports(a, 'stream', type, id))
+  const results = await Promise.allSettled(
+    sources.map((a) => getJson<{ streams?: Stream[] }>(resourceUrl(a, 'stream', type, id), signal))
+  )
+  return results.flatMap((r, i) =>
+    r.status === 'fulfilled' ? (r.value.streams ?? []).map((s) => ({ ...s, addon: sources[i].manifest.name })) : []
+  )
+}
+
+/** Matzio plays direct links (what debrid addons return); torrents, YouTube and external links are skipped. */
+export function isPlayable<T extends Stream>(stream: T): stream is T & { url: string } {
+  return typeof stream.url === 'string' && /^https?:\/\//.test(stream.url)
 }

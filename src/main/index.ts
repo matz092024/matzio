@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
+import { findMpv, Player, type PlayRequest } from './player'
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -48,12 +49,27 @@ ipcMain.on('window:toggle-maximize', (e) => {
 })
 ipcMain.on('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
 
+// Progress goes to every window; there is only one in practice.
+const broadcast = (channel: string, payload: unknown) => {
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel, payload)
+}
+const player = new Player(
+  (p) => broadcast('player:progress', p),
+  (p) => broadcast('player:ended', p)
+)
+
+ipcMain.handle('player:play', (_e, req: PlayRequest) => player.play(req))
+ipcMain.handle('player:stop', () => player.stop())
+ipcMain.handle('player:detect', (_e, custom?: string) => findMpv(custom))
+
 app.whenReady().then(() => {
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+app.on('before-quit', () => player.stop())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

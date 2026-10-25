@@ -76,7 +76,13 @@ export interface Stream {
   name?: string
   title?: string
   description?: string
-  behaviorHints?: { notWebReady?: boolean; bingeGroup?: string; filename?: string; videoSize?: number }
+  behaviorHints?: {
+    notWebReady?: boolean
+    bingeGroup?: string
+    filename?: string
+    videoSize?: number
+    proxyHeaders?: { request?: Record<string, string>; response?: Record<string, string> }
+  }
 }
 
 export interface InstalledAddon {

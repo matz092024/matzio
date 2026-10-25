@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useSettings, type Settings as S } from '../settings'
 import AddonsSettings from '../components/AddonsSettings'
+import PlayerSetting from '../components/PlayerSetting'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -50,6 +51,7 @@ export default function Settings() {
             options={[{ value: 'first', label: 'Play first stream' }, { value: 'ask', label: 'Let me choose' }]}
           />
         </Item>
+        <PlayerSetting />
       </section>
 
       <section className="settings-group glass">

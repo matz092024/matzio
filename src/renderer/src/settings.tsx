@@ -9,13 +9,16 @@ export interface Settings {
   glass: 'subtle' | 'normal' | 'strong'
   /** What the Play button does when a title has several streams. */
   quickPlay: 'first' | 'ask'
+  /** Where mpv lives; empty means find it automatically. */
+  mpvPath: string
 }
 
 const defaults: Settings = {
   nightDim: false,
   reduceMotion: false,
   glass: 'normal',
-  quickPlay: 'first'
+  quickPlay: 'first',
+  mpvPath: ''
 }
 
 const STORAGE_KEY = 'matzio.settings'
