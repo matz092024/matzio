@@ -40,3 +40,21 @@ export const PlusIcon = (p: P) => (
 export const MoonIcon = (p: P) => (
   <svg {...base} {...p}><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
 )
+export const CheckIcon = (p: P) => (
+  <svg {...base} {...p}><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+)
+export const InfoIcon = (p: P) => (
+  <svg {...base} {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
+)
+export const ChevronUpIcon = (p: P) => (
+  <svg {...base} {...p}><path d="m6 15 6-6 6 6" /></svg>
+)
+export const ChevronDownIcon = (p: P) => (
+  <svg {...base} {...p}><path d="m6 9 6 6 6-6" /></svg>
+)
+export const TrashIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg>
+)
+export const ArrowLeftIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+)

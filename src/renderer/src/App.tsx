@@ -5,6 +5,7 @@ import Home from './pages/Home'
 import Discover from './pages/Discover'
 import Library from './pages/Library'
 import Settings from './pages/Settings'
+import Detail from './pages/Detail'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
             <Route path="/discover" element={<Discover />} />
             <Route path="/library" element={<Library />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/detail/:type/:id" element={<Detail />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
