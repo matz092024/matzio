@@ -154,7 +154,7 @@ export default function Detail() {
             <div className="progress detail-progress"><div style={{ width: `${fraction(movieEntry) * 100}%` }} /></div>
           )}
           <div className="hero-actions">
-            <button className="btn btn-primary" disabled={!canPlay} onClick={() => play(meta, next?.video)}>
+            <button className="btn btn-primary" data-shortcut="play" disabled={!canPlay} onClick={() => play(meta, next?.video)}>
               <PlayIcon width={16} height={16} />
               {playLabel}
             </button>

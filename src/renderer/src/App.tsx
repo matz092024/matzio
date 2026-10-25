@@ -6,8 +6,10 @@ import Discover from './pages/Discover'
 import Library from './pages/Library'
 import Settings from './pages/Settings'
 import Detail from './pages/Detail'
+import { useShortcuts } from './shortcuts'
 
 export default function App() {
+  useShortcuts()
   return (
     <div className="app">
       <div className="backdrop" aria-hidden />
