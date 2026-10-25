@@ -10,7 +10,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "dist:win": "node scripts/fetch-mpv.mjs && electron-vite build && electron-builder --win",
+    "dist:win": "node scripts/fetch-mpv.mjs && electron-vite build && electron-builder --win --publish never",
     "fetch-mpv": "node scripts/fetch-mpv.mjs"
   },
   "build": {
@@ -37,7 +37,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Matzio"
+      "shortcutName": "Matzio",
+      "artifactName": "Matzio-Setup.${ext}"
     }
   },
   "devDependencies": {
