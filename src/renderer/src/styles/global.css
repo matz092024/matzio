@@ -455,3 +455,107 @@ button.chip:hover { color: var(--text-2); }
 .search input:focus-visible, .text-input:focus-visible { outline: none; }
 .search:focus-within { border-color: rgba(255, 255, 255, 0.22); }
 .restore-default { align-self: flex-start; margin-top: 8px; }
+
+/* ---------- Playback ---------- */
+.btn-primary:disabled:hover { background: #e8e8ea; }
+.detail-progress { width: 260px; margin: 0; }
+
+.episode-thumb { border: 0; padding: 0; display: grid; place-items: center; cursor: pointer; }
+.episode-thumb:disabled { cursor: default; }
+.episode-thumb .continue-play { position: relative; z-index: 1; }
+.episode-thumb:hover:not(:disabled) .continue-play, .episode-thumb:focus-visible .continue-play { opacity: 1; }
+.episode.watched .episode-thumb img { opacity: 0.45; }
+.episode.watched .episode-title { color: var(--text-2); }
+.watched-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.85);
+  color: #0b0b0c;
+}
+.thumb-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(0, 0, 0, 0.5); }
+.thumb-progress span { display: block; height: 100%; background: var(--text); }
+.episode-head .icon-btn { margin: -6px -4px -6px 4px; flex: none; }
+
+/* Status toast */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  max-width: min(640px, calc(100vw - 48px));
+  background: rgba(30, 30, 33, 0.72);
+  font-size: 13px;
+  animation: toast-in 260ms var(--ease);
+}
+.toast.error { color: var(--text); }
+.toast-link { text-decoration: underline; color: var(--text-2); flex: none; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+.spinner { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); border-top-color: var(--text); animation: spin 800ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+:root[data-motion='reduce'] .toast { animation: none; }
+
+/* Stream picker */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  animation: fade 200ms var(--ease);
+}
+@keyframes fade { from { opacity: 0; } }
+.sheet {
+  width: min(720px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: rgba(24, 24, 27, 0.78);
+  overflow: hidden;
+}
+.sheet-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 22px 14px; }
+.sheet-title { font-family: var(--font-display); font-size: 20px; font-weight: 600; margin-top: 4px; }
+.stream-list { list-style: none; overflow-y: auto; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 4px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.12) transparent; }
+.stream {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 150px 1fr 32px;
+  gap: 16px;
+  align-items: center;
+  text-align: left;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  transition: background var(--speed) var(--ease);
+}
+.stream:hover, .stream:focus-visible { background: rgba(255, 255, 255, 0.06); }
+.stream-source { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stream-name { font-weight: 600; white-space: pre-line; font-size: 13px; }
+.stream-addon { font-size: 11px; color: var(--text-3); }
+.stream-detail { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
+.stream-size { color: var(--text-3); }
+.stream-play { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; padding-left: 2px; background: rgba(255, 255, 255, 0.08); opacity: 0; transition: opacity var(--speed) var(--ease); }
+.stream:hover .stream-play, .stream:focus-visible .stream-play { opacity: 1; }
+.sheet-note { padding: 0 22px 18px; font-size: 12px; color: var(--text-3); }
+
+/* Player setting */
+.setting-stack { flex-direction: column; align-items: stretch; gap: 10px; }
+.player-status { font-size: 13px; margin-top: 6px; color: var(--text-2); overflow-wrap: anywhere; }
+.player-status .ok::before { content: '● '; color: var(--text-3); }
+.player-status .warn { color: var(--text); }
+.player-status a { color: var(--text); }
+.player-status code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: rgba(255, 255, 255, 0.06); padding: 1px 6px; border-radius: 6px; }

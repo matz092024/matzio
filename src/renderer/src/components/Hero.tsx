@@ -1,12 +1,14 @@
 import { useNavigate } from 'react-router-dom'
 import type { MetaPreview } from '../stremio/types'
 import { useLibrary } from '../library'
-import { CheckIcon, InfoIcon, PlusIcon } from './Icons'
+import { usePlayback } from '../playback'
+import { CheckIcon, InfoIcon, PlayIcon, PlusIcon } from './Icons'
 import { artFor, detailPath } from './Poster'
 
 export default function Hero({ meta, eyebrow }: { meta: MetaPreview; eyebrow: string }) {
   const navigate = useNavigate()
   const library = useLibrary()
+  const { play } = usePlayback()
   const saved = library.has(meta.id)
   const info = [meta.releaseInfo, meta.genres?.slice(0, 3).join(', '), meta.imdbRating && `IMDb ${meta.imdbRating}`]
     .filter(Boolean)
@@ -28,9 +30,13 @@ export default function Hero({ meta, eyebrow }: { meta: MetaPreview; eyebrow: st
         {info && <p className="hero-meta">{info}</p>}
         {meta.description && <p className="hero-synopsis">{meta.description}</p>}
         <div className="hero-actions">
-          <button className="btn btn-primary" onClick={() => navigate(detailPath(meta))}>
+          <button className="btn btn-primary" onClick={() => play(meta)}>
+            <PlayIcon width={16} height={16} />
+            Play
+          </button>
+          <button className="btn btn-glass" onClick={() => navigate(detailPath(meta))}>
             <InfoIcon width={16} height={16} />
-            View
+            Details
           </button>
           <button
             className="btn btn-icon"

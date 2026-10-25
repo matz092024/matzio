@@ -5,6 +5,8 @@ import App from './App'
 import { SettingsProvider } from './settings'
 import { AddonsProvider } from './stremio/addons'
 import { LibraryProvider } from './library'
+import { ProgressProvider } from './progress'
+import { PlaybackProvider } from './playback'
 import './styles/global.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -12,9 +14,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <SettingsProvider>
       <AddonsProvider>
         <LibraryProvider>
-          <HashRouter>
-            <App />
-          </HashRouter>
+          <ProgressProvider>
+            <HashRouter>
+              <PlaybackProvider>
+                <App />
+              </PlaybackProvider>
+            </HashRouter>
+          </ProgressProvider>
         </LibraryProvider>
       </AddonsProvider>
     </SettingsProvider>

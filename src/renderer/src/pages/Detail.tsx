@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeftIcon, CheckIcon, PlusIcon } from '../components/Icons'
+import { ArrowLeftIcon, CheckIcon, ListIcon, PlayIcon, PlusIcon } from '../components/Icons'
 import { artFor } from '../components/Poster'
 import { useAddons } from '../stremio/addons'
 import { fetchMeta } from '../stremio/client'
 import type { MetaDetail, Video } from '../stremio/types'
 import { useLibrary } from '../library'
 import { useAsync } from '../useAsync'
+import { episodeLabel, nextUp, usePlayback } from '../playback'
+import { fraction, isWatched, useProgress } from '../progress'
 
 function formatDate(iso?: string) {
   if (!iso) return ''
@@ -14,7 +16,9 @@ function formatDate(iso?: string) {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function Episodes({ meta }: { meta: MetaDetail }) {
+function Episodes({ meta, initialSeason }: { meta: MetaDetail; initialSeason?: number }) {
+  const { play } = usePlayback()
+  const progress = useProgress()
   const bySeason = useMemo(() => {
     const map = new Map<number, Video[]>()
     for (const v of meta.videos ?? []) {
@@ -27,7 +31,7 @@ function Episodes({ meta }: { meta: MetaDetail }) {
 
   // Specials (season 0) go last.
   const seasons = [...bySeason.keys()].sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b))
-  const [season, setSeason] = useState(seasons[0])
+  const [season, setSeason] = useState(initialSeason !== undefined && seasons.includes(initialSeason) ? initialSeason : seasons[0])
   const episodes = bySeason.get(season) ?? []
 
   if (seasons.length === 0) return null
@@ -44,16 +48,34 @@ function Episodes({ meta }: { meta: MetaDetail }) {
       <ol className="episode-list">
         {episodes.map((ep) => {
           const upcoming = ep.released ? new Date(ep.released).getTime() > Date.now() : false
+          const entry = progress.get(ep.id)
+          const watched = isWatched(entry)
           return (
-            <li key={ep.id} className={`episode glass ${upcoming ? 'upcoming' : ''}`}>
-              <div className="episode-thumb" style={{ backgroundImage: artFor(ep.id) }}>
+            <li key={ep.id} className={`episode glass ${upcoming ? 'upcoming' : ''} ${watched ? 'watched' : ''}`}>
+              <button
+                className="episode-thumb"
+                style={{ backgroundImage: artFor(ep.id) }}
+                disabled={upcoming}
+                aria-label={`Play episode ${ep.episode}`}
+                onClick={() => play(meta, ep)}
+              >
                 {ep.thumbnail && <img src={ep.thumbnail} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.display = 'none')} />}
-              </div>
+                {!upcoming && <span className="continue-play"><PlayIcon width={14} height={14} /></span>}
+                {watched && <span className="watched-badge"><CheckIcon width={12} height={12} /></span>}
+                {entry && !watched && fraction(entry) > 0 && (
+                  <span className="thumb-progress"><span style={{ width: `${fraction(entry) * 100}%` }} /></span>
+                )}
+              </button>
               <div className="episode-body">
                 <div className="episode-head">
                   <span className="episode-num">{ep.episode ?? ''}</span>
                   <span className="episode-title">{ep.title ?? ep.name ?? `Episode ${ep.episode}`}</span>
                   <span className="episode-date">{upcoming ? `Airs ${formatDate(ep.released)}` : formatDate(ep.released)}</span>
+                  {!upcoming && (
+                    <button className="icon-btn" title="Choose stream" aria-label={`Choose a stream for episode ${ep.episode}`} onClick={() => play(meta, ep, { choose: true })}>
+                      <ListIcon width={16} height={16} />
+                    </button>
+                  )}
                 </div>
                 {(ep.overview ?? ep.description) && <p className="episode-overview">{ep.overview ?? ep.description}</p>}
               </div>
@@ -70,6 +92,8 @@ export default function Detail() {
   const navigate = useNavigate()
   const { addons } = useAddons()
   const library = useLibrary()
+  const progress = useProgress()
+  const { play } = usePlayback()
   const state = useAsync(`meta|${type}|${id}|${addons.map((a) => a.transportUrl).join(',')}`, () => fetchMeta(addons, type, id))
 
   if (state.status === 'loading') {
@@ -87,6 +111,19 @@ export default function Detail() {
   const meta = state.value
   const saved = library.has(meta.id)
   const info = [meta.releaseInfo, meta.runtime, meta.imdbRating && `IMDb ${meta.imdbRating}`].filter(Boolean)
+
+  const isSeries = meta.type === 'series'
+  const next = isSeries ? nextUp(meta, progress.latestFor(meta.id)) : null
+  const movieEntry = isSeries ? undefined : progress.get(meta.id)
+  const resumeMovie = movieEntry && !isWatched(movieEntry) && movieEntry.position > 30
+  const playLabel = isSeries
+    ? next
+      ? `${next.resume ? 'Resume' : 'Play'} ${episodeLabel(next.video)}`
+      : 'Play'
+    : resumeMovie
+      ? 'Resume'
+      : 'Play'
+  const canPlay = !isSeries || next !== null
 
   return (
     <div className="page detail">
@@ -113,7 +150,18 @@ export default function Detail() {
           {meta.description && <p className="detail-description">{meta.description}</p>}
           {meta.director && meta.director.length > 0 && <p className="credit"><span>Director</span>{meta.director.join(', ')}</p>}
           {meta.cast && meta.cast.length > 0 && <p className="credit"><span>Cast</span>{meta.cast.slice(0, 6).join(', ')}</p>}
+          {movieEntry && fraction(movieEntry) > 0 && !isWatched(movieEntry) && (
+            <div className="progress detail-progress"><div style={{ width: `${fraction(movieEntry) * 100}%` }} /></div>
+          )}
           <div className="hero-actions">
+            <button className="btn btn-primary" disabled={!canPlay} onClick={() => play(meta, next?.video)}>
+              <PlayIcon width={16} height={16} />
+              {playLabel}
+            </button>
+            <button className="btn btn-glass" disabled={!canPlay} onClick={() => play(meta, next?.video, { choose: true })}>
+              <ListIcon width={16} height={16} />
+              Choose stream
+            </button>
             <button className="btn btn-glass" onClick={() => library.toggle(meta)}>
               {saved ? <CheckIcon width={16} height={16} /> : <PlusIcon width={16} height={16} />}
               {saved ? 'In library' : 'Add to library'}
@@ -122,7 +170,7 @@ export default function Detail() {
         </div>
       </section>
 
-      {meta.type === 'series' && <Episodes key={meta.id} meta={meta} />}
+      {isSeries && <Episodes key={meta.id} meta={meta} initialSeason={next?.video.season} />}
     </div>
   )
 }
