@@ -3,11 +3,9 @@
 // Usage: node scripts/fetch-mpv.mjs [--force]
 
 import { execFileSync } from 'node:child_process'
-import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
@@ -29,9 +27,10 @@ const url = `https://sourceforge.net/projects/mpv-player-windows/files/64bit/${n
 
 console.log(`Downloading ${name}…`)
 const res = await fetch(url, { redirect: 'follow' })
-if (!res.ok || !res.body) throw new Error(`Download failed: ${res.status} ${res.statusText}`)
+if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`)
 const archive = join(tmpdir(), name)
-await pipeline(Readable.fromWeb(res.body), createWriteStream(archive))
+// Buffered rather than streamed: streaming fetch bodies to disk trips an undici assertion on Windows (Node 22).
+writeFileSync(archive, Buffer.from(await res.arrayBuffer()))
 
 const sevenZip = createRequire(import.meta.url)('7zip-bin').path7za
 rmSync(target, { recursive: true, force: true })
