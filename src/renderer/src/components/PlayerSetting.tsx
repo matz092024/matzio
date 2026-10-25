@@ -1,23 +1,39 @@
 import { useEffect, useState } from 'react'
 import { useSettings } from '../settings'
 
+type Detected = { path: string | null; customOk: boolean | null }
+
 /** Shows which mpv Matzio will use, and lets you point it at a specific mpv.exe. */
 export default function PlayerSetting() {
   const { settings, update } = useSettings()
-  const [found, setFound] = useState<string | null | undefined>(undefined)
+  const [detected, setDetected] = useState<Detected | undefined>(undefined)
   const [draft, setDraft] = useState(settings.mpvPath)
   const api = window.matzio
+  const isWindows = api?.platform === 'win32'
+  const exe = isWindows ? 'mpv.exe' : 'mpv'
 
   useEffect(() => {
     if (!api) return
     let active = true
-    api.player.detect(settings.mpvPath || undefined).then((p) => active && setFound(p))
+    api.player.detect(settings.mpvPath || undefined).then((d) => active && setDetected(d))
     return () => {
       active = false
     }
   }, [api, settings.mpvPath])
 
-  const customMissing = settings.mpvPath && found !== undefined && found !== settings.mpvPath
+  const save = (value: string) => {
+    setDraft(value)
+    update({ mpvPath: value.trim() })
+  }
+
+  const browse = async () => {
+    const picked = await api?.player.browse()
+    if (picked) save(picked)
+  }
+
+  const pathHelp = isWindows
+    ? 'Pick the mpv.exe file inside the folder you unzipped from mpv.io (not a shortcut, the .zip/.7z file, or mpv.com).'
+    : 'Pick the mpv program file.'
 
   return (
     <div className="setting setting-stack">
@@ -29,16 +45,19 @@ export default function PlayerSetting() {
         <div className="player-status">
           {!api ? (
             <span>Available in the desktop app.</span>
-          ) : found === undefined ? (
+          ) : detected === undefined ? (
             <span>Looking for mpv…</span>
-          ) : found && !customMissing ? (
-            <span className="ok">Using {found}</span>
-          ) : found ? (
-            <span className="warn">mpv wasn’t found at that path, so Matzio is using {found} instead.</span>
+          ) : detected.customOk === false ? (
+            <span className="warn">
+              “{settings.mpvPath}” isn’t {exe}. {pathHelp}
+              {detected.path && ` Until then Matzio uses ${detected.path}.`}
+            </span>
+          ) : detected.path ? (
+            <span className="ok">Using {detected.path}</span>
           ) : (
             <span className="warn">
-              mpv wasn’t found. Get it from{' '}
-              <a href="https://mpv.io/installation/" target="_blank" rel="noreferrer">mpv.io</a>, then paste the path to mpv.exe below.
+              mpv wasn’t found. Get it from <a href="https://mpv.io/installation/" target="_blank" rel="noreferrer">mpv.io</a>, then click Browse and
+              select {exe}.
             </span>
           )}
         </div>
@@ -47,18 +66,24 @@ export default function PlayerSetting() {
         className="addon-install"
         onSubmit={(e) => {
           e.preventDefault()
-          update({ mpvPath: draft.trim() })
+          save(draft)
         }}
       >
         <input
           className="text-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Find automatically, or paste the path to mpv.exe"
+          placeholder={`Find automatically, or the path to ${exe}`}
           spellCheck={false}
           aria-label="mpv path"
         />
+        {api && (
+          <button type="button" className="btn btn-glass" onClick={browse}>Browse…</button>
+        )}
         <button className="btn btn-glass" disabled={draft.trim() === settings.mpvPath}>Save</button>
+        {settings.mpvPath && (
+          <button type="button" className="btn btn-glass" onClick={() => save('')} title="Go back to finding mpv automatically">Reset</button>
+        )}
       </form>
     </div>
   )
