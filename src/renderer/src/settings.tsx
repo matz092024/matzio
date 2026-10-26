@@ -10,6 +10,8 @@ export interface Settings {
   glass: 'subtle' | 'normal' | 'strong'
   /** What the Play button does when a title has several streams. */
   quickPlay: 'first' | 'ask'
+  /** Play inside the Matzio window, or hand the stream to mpv's own window. */
+  playerMode: 'integrated' | 'external'
   /** Where mpv lives; empty means find it automatically. */
   mpvPath: string
 }
@@ -19,6 +21,7 @@ const defaults: Settings = {
   reduceMotion: false,
   glass: 'normal',
   quickPlay: 'first',
+  playerMode: 'integrated',
   mpvPath: ''
 }
 
@@ -33,16 +36,17 @@ const SettingsContext = createContext<{
   update: (patch: Partial<Settings>) => void
 } | null>(null)
 
-export function SettingsProvider({ children }: { children: ReactNode }) {
+/** `persist` is off in the player overlay window, which only reads the theme. */
+export function SettingsProvider({ children, persist = true }: { children: ReactNode; persist?: boolean }) {
   const [settings, setSettings] = useState<Settings>(load)
 
   useEffect(() => {
-    writeJson(STORAGE_KEY, settings)
+    if (persist) writeJson(STORAGE_KEY, settings)
     const root = document.documentElement
     root.dataset.night = String(settings.nightDim)
     root.dataset.motion = settings.reduceMotion ? 'reduce' : 'full'
     root.dataset.glass = settings.glass
-  }, [settings])
+  }, [settings, persist])
 
   const update = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }))
 

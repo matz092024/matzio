@@ -65,10 +65,16 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const player = window.matzio?.player
     if (!player) return
-    return player.onEnded((p) => {
+    const offEnded = player.onEnded((p) => {
       setStatus((s) => (s.kind === 'playing' || s.kind === 'busy' ? { kind: 'idle' } : s))
       if (p.error) setStatus({ kind: 'error', text: `mpv couldn’t start: ${p.error}`, settingsLink: true })
     })
+    // e.g. the built-in player couldn't draw into the window, so mpv opened on its own.
+    const offNotice = player.onNotice((text) => setStatus({ kind: 'playing', text }))
+    return () => {
+      offEnded()
+      offNotice()
+    }
   }, [])
 
   // Errors fade out on their own after a while.
@@ -108,9 +114,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       title,
       start: startAt,
       headers: stream.behaviorHints?.proxyHeaders?.request,
-      mpvPath: settings.mpvPath || undefined
+      mpvPath: settings.mpvPath || undefined,
+      embed: settings.playerMode !== 'external'
     })
-    if (result.ok) setStatus({ kind: 'playing', text: `Playing ${title}` })
+    // The embedded player has its own controls on screen, so it needs no toast.
+    if (result.ok) setStatus(result.embedded ? { kind: 'idle' } : { kind: 'playing', text: `Playing ${title}` })
     else if (result.error === 'mpv-missing') setStatus({ kind: 'error', text: 'mpv couldn’t be found. Select mpv.exe in Settings.', settingsLink: true })
     else setStatus({ kind: 'error', text: result.error, settingsLink: true })
   }

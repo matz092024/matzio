@@ -7,22 +7,38 @@ import { AddonsProvider } from './stremio/addons'
 import { LibraryProvider } from './library'
 import { ProgressProvider } from './progress'
 import { PlaybackProvider } from './playback'
+import PlayerOverlay from './player/PlayerOverlay'
 import './styles/global.css'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <SettingsProvider>
-      <AddonsProvider>
-        <LibraryProvider>
-          <ProgressProvider>
-            <HashRouter>
-              <PlaybackProvider>
-                <App />
-              </PlaybackProvider>
-            </HashRouter>
-          </ProgressProvider>
-        </LibraryProvider>
-      </AddonsProvider>
-    </SettingsProvider>
-  </React.StrictMode>
-)
+const root = ReactDOM.createRoot(document.getElementById('root')!)
+
+// The player controls run in their own transparent window over the embedded video,
+// so they load the same bundle with nothing but the theme around them.
+if (/^#\/?overlay/.test(window.location.hash)) {
+  document.body.classList.add('overlay-body')
+  root.render(
+    <React.StrictMode>
+      <SettingsProvider persist={false}>
+        <PlayerOverlay />
+      </SettingsProvider>
+    </React.StrictMode>
+  )
+} else {
+  root.render(
+    <React.StrictMode>
+      <SettingsProvider>
+        <AddonsProvider>
+          <LibraryProvider>
+            <ProgressProvider>
+              <HashRouter>
+                <PlaybackProvider>
+                  <App />
+                </PlaybackProvider>
+              </HashRouter>
+            </ProgressProvider>
+          </LibraryProvider>
+        </AddonsProvider>
+      </SettingsProvider>
+    </React.StrictMode>
+  )
+}

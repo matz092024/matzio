@@ -58,3 +58,33 @@ export const TrashIcon = (p: P) => (
 export const ArrowLeftIcon = (p: P) => (
   <svg {...base} {...p}><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
 )
+export const PauseIcon = (p: P) => (
+  <svg {...base} fill="currentColor" stroke="none" {...p}><rect x="6" y="4.5" width="4" height="15" rx="1.3" /><rect x="14" y="4.5" width="4" height="15" rx="1.3" /></svg>
+)
+export const VolumeIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4z" /><path d="M15.8 9.2a4 4 0 0 1 0 5.6" /><path d="M18.3 6.7a7.5 7.5 0 0 1 0 10.6" /></svg>
+)
+export const MuteIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4z" /><path d="m16 10 4.5 4.5M20.5 10 16 14.5" /></svg>
+)
+export const SubtitlesIcon = (p: P) => (
+  <svg {...base} {...p}><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 14h4M14 14h3" /><path d="M7 10.5h10" /></svg>
+)
+export const AudioIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M9 18V7l10-2v11" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></svg>
+)
+export const ExpandIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M9 4H4v5M15 4h5v5M15 20h5v-5M9 20H4v-5" /></svg>
+)
+export const ShrinkIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M4 9h5V4M20 9h-5V4M20 15h-5v5M4 15h5v5" /></svg>
+)
+export const CloseIcon = (p: P) => (
+  <svg {...base} {...p}><path d="m6 6 12 12M18 6 6 18" /></svg>
+)
+export const SkipBackIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M11 7V4L5 8.5 11 13v-3" /><path d="M8.5 9.5h5.5a5.5 5.5 0 1 1 0 11H9" /></svg>
+)
+export const SkipForwardIcon = (p: P) => (
+  <svg {...base} {...p}><path d="M13 7V4l6 4.5L13 13v-3" /><path d="M15.5 9.5H10a5.5 5.5 0 1 0 0 11h5" /></svg>
+)
