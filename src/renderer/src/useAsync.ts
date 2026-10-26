@@ -8,10 +8,15 @@ const inFlight = new Map<string, Promise<unknown>>()
 /**
  * Runs `load` whenever `key` changes. Results are cached by key for the rest of the session,
  * and components asking for the same key at once share one request.
+ * `stale` is an older value (e.g. from the last launch) shown while `load` runs; it stays up if `load` fails.
  */
-export function useAsync<T>(key: string | null, load: () => Promise<T>): AsyncState<T> {
+export function useAsync<T>(key: string | null, load: () => Promise<T>, stale?: T): AsyncState<T> {
   const [state, setState] = useState<AsyncState<T>>(() =>
-    key && cache.has(key) ? { status: 'done', value: cache.get(key) as T } : { status: 'loading' }
+    key && cache.has(key)
+      ? { status: 'done', value: cache.get(key) as T }
+      : stale !== undefined
+        ? { status: 'done', value: stale }
+        : { status: 'loading' }
   )
 
   useEffect(() => {
@@ -21,7 +26,7 @@ export function useAsync<T>(key: string | null, load: () => Promise<T>): AsyncSt
       return
     }
     let active = true
-    setState({ status: 'loading' })
+    setState(stale !== undefined ? { status: 'done', value: stale } : { status: 'loading' })
     let promise = inFlight.get(key) as Promise<T> | undefined
     if (!promise) {
       promise = load()
@@ -33,7 +38,9 @@ export function useAsync<T>(key: string | null, load: () => Promise<T>): AsyncSt
     }
     promise
       .then((value) => active && setState({ status: 'done', value }))
-      .catch((error) => active && setState({ status: 'error', error: error instanceof Error ? error : new Error(String(error)) }))
+      .catch((error) => {
+        if (active && stale === undefined) setState({ status: 'error', error: error instanceof Error ? error : new Error(String(error)) })
+      })
     return () => {
       active = false
     }
