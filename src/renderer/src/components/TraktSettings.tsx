@@ -96,7 +96,8 @@ export default function TraktSettings() {
             <p className="setting-hint">
               Matzio needs a Trakt API app of your own. Create one at{' '}
               <a href="https://trakt.tv/oauth/applications/new" target="_blank" rel="noreferrer">trakt.tv/oauth/applications</a> with the redirect URI{' '}
-              <code>urn:ietf:wg:oauth:2.0:oob</code>, then paste its keys here. They stay on this computer.
+              <code>urn:ietf:wg:oauth:2.0:oob</code>, then paste its Client ID here. New Trakt apps have no Client Secret, so leave that empty unless
+              your app shows one. Keys stay on this computer.
             </p>
             <input className="text-input" value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" spellCheck={false} aria-label="Trakt Client ID" />
             <input
@@ -104,12 +105,12 @@ export default function TraktSettings() {
               type="password"
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="Client Secret"
+              placeholder="Client Secret (optional)"
               spellCheck={false}
-              aria-label="Trakt Client Secret"
+              aria-label="Trakt Client Secret (optional)"
             />
             <div className="trakt-actions">
-              <button className="btn btn-primary" disabled={!clientId.trim() || !clientSecret.trim()}>Save keys</button>
+              <button className="btn btn-primary" disabled={!clientId.trim()}>Save keys</button>
               {editKeys && <button type="button" className="btn btn-glass" onClick={() => setEditKeys(false)}>Cancel</button>}
             </div>
           </form>

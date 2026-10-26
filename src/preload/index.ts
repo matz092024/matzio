@@ -56,6 +56,10 @@ const api = {
     load: (): Record<string, unknown> => ipcRenderer.sendSync('store:load'),
     write: (key: string, value: unknown) => ipcRenderer.send('store:write', key, value)
   },
+  cache: {
+    get: (key: string): Promise<unknown> => ipcRenderer.invoke('cache:get', key),
+    set: (key: string, value: unknown) => ipcRenderer.send('cache:set', key, value)
+  },
   player: {
     play: (req: PlayRequest): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke('player:play', req),
     stop: (): Promise<void> => ipcRenderer.invoke('player:stop'),
