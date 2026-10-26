@@ -99,17 +99,18 @@ const broadcast = (channel: string, payload: unknown) => {
 /** The embedded attempt in flight, so a player that can't embed can retry in its own window. */
 let embedAttempt: { req: PlayRequest; startedAt: number } | null = null
 
-const onEnded = (p: { key: string; position: number; duration: number; error?: string }) => {
+const onEnded = (p: { key: string; position: number; duration: number; error?: string; mpvError?: string }) => {
   const attempt = embedAttempt
   embedAttempt = null
   // mpv quitting within a few seconds without ever opening the file usually means it
   // couldn't draw into our window, so give the same stream its own mpv window instead.
   if (attempt && p.duration === 0 && Date.now() - attempt.startedAt < 6000) {
-    log('warn', 'player', `Built-in player quit after ${Date.now() - attempt.startedAt} ms without opening the file; retrying in mpv's own window`, p.error)
+    log('warn', 'player', `Built-in player quit after ${Date.now() - attempt.startedAt} ms without opening the file; retrying in mpv's own window`, p.error ?? p.mpvError)
     const retry = player.play({ ...attempt.req, embed: false })
     if (!retry.ok) log('error', 'player', 'Separate-window fallback failed too', retry.error)
     if (retry.ok) {
-      broadcast('player:notice', 'The built-in player couldn’t start, so mpv opened in its own window.')
+      const why = p.mpvError ? ` mpv said: ${p.mpvError}` : ''
+      broadcast('player:notice', `The built-in player couldn’t start, so mpv opened in its own window.${why}`)
       return
     }
   }

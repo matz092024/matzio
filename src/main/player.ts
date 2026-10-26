@@ -110,6 +110,12 @@ export function detectMpv(custom?: string): { path: string | null; customOk: boo
   return { path, customOk: normalizeCustom(custom).some(isRunnable) }
 }
 
+/** The line in mpv's output that explains why it quit, e.g. an option this mpv doesn't accept. */
+function lastError(log: string): string | undefined {
+  const lines = log.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  return [...lines].reverse().find((l) => /error|fail|invalid|unknown|not found/i.test(l)) ?? lines.at(-1)
+}
+
 const idleState: PlayerState = {
   active: false,
   embedded: false,
@@ -155,7 +161,7 @@ export class Player {
   constructor(
     private hooks: {
       onProgress: (p: PlayerProgress) => void
-      onEnded: (p: PlayerProgress & { error?: string }) => void
+      onEnded: (p: PlayerProgress & { error?: string; mpvError?: string }) => void
       onState: (s: PlayerState) => void
       /** The window handle to draw into, when the request asks to embed. */
       embedTarget: () => number | null
@@ -206,8 +212,7 @@ export class Player {
         '--input-default-bindings=no',
         '--input-vo-keyboard=no',
         '--input-cursor=no',
-        '--no-window-dragging',
-        '--background=#000000'
+        '--no-window-dragging'
       )
     } else {
       args.push('--fullscreen', '--osd-bar=yes', '--osd-font-size=32', '--osd-color=#DDDDDD', '--osd-border-size=1')
@@ -228,7 +233,8 @@ export class Player {
     const failures: string[] = []
     for (const mpv of found) {
       try {
-        proc = spawn(mpv, args, { stdio: dev ? ['ignore', 'pipe', 'pipe'] : 'ignore', windowsHide: false })
+        // stderr is kept so a failed start can say what mpv complained about; dev mode logs stdout too.
+        proc = spawn(mpv, args, { stdio: ['ignore', dev ? 'pipe' : 'ignore', 'pipe'], windowsHide: false })
         log('info', 'mpv', `Started ${mpv} (pid ${proc.pid ?? '?'})`, {
           title: req.title,
           embedded,
@@ -250,6 +256,10 @@ export class Player {
     this.launchedAt = launchedAt
     this.firstFrameLogged = false
     let spawnError: string | undefined
+    let stderr = ''
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString('utf8')).slice(-4000)
+    })
     if (dev) {
       // A broken stream can make mpv print the same warning many times, so each run logs at most 200 lines.
       let lines = 0
@@ -290,7 +300,7 @@ export class Player {
       this.proc = null
       this.socket?.destroy()
       this.socket = null
-      this.finish(spawnError)
+      this.finish(spawnError, code ? lastError(stderr) : undefined)
     })
 
     this.connect(ipcPath, proc)
@@ -307,10 +317,11 @@ export class Player {
     this.finish()
   }
 
-  private finish(error?: string) {
-    log(error ? 'error' : 'info', 'player', `Playback ended at ${Math.round(this.progress.position)} of ${Math.round(this.progress.duration)} s`, error)
-    this.hooks.onEnded({ ...this.progress, error })
+  private finish(error?: string, mpvError?: string) {
+    log(error || mpvError ? 'error' : 'info', 'player', `Playback ended at ${Math.round(this.progress.position)} of ${Math.round(this.progress.duration)} s`, error ?? mpvError)
+    // Clear the state first: onEnded may start the same stream again in mpv's own window.
     this.pushState({ ...idleState })
+    this.hooks.onEnded({ ...this.progress, error, mpvError })
   }
 
   /** Sends one mpv command; ignored when nothing is playing. */
