@@ -13,7 +13,11 @@ const inFlight = new Map<string, Promise<unknown>>()
  */
 export function useAsync<T>(key: string | null, load: () => Promise<T>, persist = false): AsyncState<T> {
   const [state, setState] = useState<AsyncState<T>>(() =>
-    key && cache.has(key) ? { status: 'done', value: cache.get(key) as T } : { status: 'loading' }
+    key && cache.has(key)
+      ? { status: 'done', value: cache.get(key) as T }
+      : stale !== undefined
+        ? { status: 'done', value: stale }
+        : { status: 'loading' }
   )
 
   useEffect(() => {

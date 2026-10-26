@@ -1,8 +1,9 @@
 import Row from './Row'
 import Poster, { PosterSkeleton } from './Poster'
 import { fetchCatalog } from '../stremio/client'
-import type { InstalledAddon, ManifestCatalog } from '../stremio/types'
+import type { InstalledAddon, ManifestCatalog, MetaPreview } from '../stremio/types'
 import { useAsync } from '../useAsync'
+import { cachedCatalog, rememberCatalog } from '../catalogCache'
 
 export function catalogTitle(catalog: ManifestCatalog) {
   const kind = catalog.type === 'movie' ? 'movies' : catalog.type
