@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { detectMpv, Player, type PlayRequest } from './player'
 import { Trakt, type WatchedItem } from './trakt'
+import { registerUpdater } from './updater'
 import { registerStore } from './store'
 
 // Pin the data folder to %APPDATA%\Matzio so dev runs, installs and updates all share it.
@@ -111,6 +112,7 @@ app.whenReady().then(() => {
   // Anything finished while offline goes out at start-up and then every 15 minutes.
   trakt.flush()
   setInterval(() => trakt.flush(), 15 * 60 * 1000)
+  registerUpdater(broadcast)
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
