@@ -13,6 +13,8 @@ import {
   SubtitlesIcon,
   VolumeIcon
 } from '../components/Icons'
+import { useSettings } from '../settings'
+import BufferPanel from './BufferPanel'
 
 const HIDE_AFTER = 2800
 
@@ -108,6 +110,9 @@ export default function PlayerOverlay() {
   const [fullscreen, setFullscreen] = useState(false)
   const [visible, setVisible] = useState(true)
   const [scrub, setScrub] = useState<number | null>(null)
+  const { settings } = useSettings()
+  // Starts from the Settings toggle; I flips it for this video only.
+  const [showStats, setShowStats] = useState(settings.bufferInfo)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const menuOpen = useRef(false)
 
@@ -193,6 +198,10 @@ export default function PlayerOverlay() {
         case 'Q':
           close()
           break
+        case 'i':
+        case 'I':
+          setShowStats((v) => !v)
+          break
       }
       wake()
     }
@@ -201,117 +210,120 @@ export default function PlayerOverlay() {
   }, [close, fullscreen, player, state.muted, state.volume, togglePause, toggleFullscreen, wake])
 
   return (
-    <div
-      className={`pl ${showing ? 'pl-show' : 'pl-hide'}`}
-      onMouseMove={wake}
-      onDoubleClick={toggleFullscreen}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) togglePause()
-      }}
-    >
-      <div className="pl-top">
-        <button className="pl-btn pl-back" onClick={close} aria-label="Close the player" title="Close the player (Esc)">
-          <CloseIcon width={18} height={18} />
-        </button>
-        <div className="pl-title" title={state.title}>{state.title}</div>
-      </div>
-
-      {state.buffering && (
-        <div className="pl-center" aria-live="polite">
-          <span className="spinner spinner-lg" aria-hidden />
-          <span className="pl-center-text">Buffering…</span>
-        </div>
-      )}
-      {!state.buffering && state.paused && (
-        <div className="pl-center pl-center-quiet" aria-hidden>
-          <PauseIcon width={34} height={34} />
-        </div>
-      )}
-
-      <div className="pl-bottom">
-        <div className="pl-scrub">
-          <span className="pl-time">{clock(position)}</span>
-          <input
-            className="pl-range"
-            type="range"
-            min={0}
-            max={Math.max(1, Math.floor(duration))}
-            step={1}
-            value={Math.min(position, Math.max(1, duration))}
-            aria-label="Position"
-            onChange={(e) => setScrub(Number(e.target.value))}
-            onPointerUp={() => {
-              if (scrub !== null) player?.seekTo(scrub)
-              setScrub(null)
-            }}
-            onKeyUp={() => {
-              if (scrub !== null) player?.seekTo(scrub)
-              setScrub(null)
-            }}
-            style={{ ['--pl-progress' as string]: `${duration > 0 ? (position / duration) * 100 : 0}%` }}
-            disabled={duration <= 0}
-          />
-          <span className="pl-time">{duration > 0 ? `−${clock(duration - position)}` : '--:--'}</span>
+    <>
+      {showStats && state.active && <BufferPanel />}
+      <div
+        className={`pl ${showing ? 'pl-show' : 'pl-hide'}`}
+        onMouseMove={wake}
+        onDoubleClick={toggleFullscreen}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) togglePause()
+        }}
+      >
+        <div className="pl-top">
+          <button className="pl-btn pl-back" onClick={close} aria-label="Close the player" title="Close the player (Esc)">
+            <CloseIcon width={18} height={18} />
+          </button>
+          <div className="pl-title" title={state.title}>{state.title}</div>
         </div>
 
-        <div className="pl-row">
-          <button className="pl-btn pl-play" onClick={togglePause} aria-label={state.paused ? 'Play' : 'Pause'} title="Play or pause (Space)">
-            {state.paused ? <PlayIcon width={20} height={20} /> : <PauseIcon width={20} height={20} />}
-          </button>
-          <button className="pl-btn" onClick={() => player?.seekBy(-10)} aria-label="Back 10 seconds" title="Back 10 seconds (←)">
-            <SkipBackIcon width={19} height={19} />
-          </button>
-          <button className="pl-btn" onClick={() => player?.seekBy(10)} aria-label="Forward 10 seconds" title="Forward 10 seconds (→)">
-            <SkipForwardIcon width={19} height={19} />
-          </button>
+        {state.buffering && (
+          <div className="pl-center" aria-live="polite">
+            <span className="spinner spinner-lg" aria-hidden />
+            <span className="pl-center-text">Buffering…</span>
+          </div>
+        )}
+        {!state.buffering && state.paused && (
+          <div className="pl-center pl-center-quiet" aria-hidden>
+            <PauseIcon width={34} height={34} />
+          </div>
+        )}
 
-          <div className="pl-volume">
-            <button className="pl-btn" onClick={() => player?.setMuted(!state.muted)} aria-label={state.muted ? 'Unmute' : 'Mute'} title="Mute (M)">
-              {state.muted || state.volume === 0 ? <MuteIcon width={19} height={19} /> : <VolumeIcon width={19} height={19} />}
-            </button>
+        <div className="pl-bottom">
+          <div className="pl-scrub">
+            <span className="pl-time">{clock(position)}</span>
             <input
-              className="pl-range pl-range-sm"
+              className="pl-range"
               type="range"
               min={0}
-              max={100}
+              max={Math.max(1, Math.floor(duration))}
               step={1}
-              value={state.muted ? 0 : state.volume}
-              aria-label="Volume"
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                if (state.muted && v > 0) player?.setMuted(false)
-                player?.setVolume(v)
+              value={Math.min(position, Math.max(1, duration))}
+              aria-label="Position"
+              onChange={(e) => setScrub(Number(e.target.value))}
+              onPointerUp={() => {
+                if (scrub !== null) player?.seekTo(scrub)
+                setScrub(null)
               }}
-              style={{ ['--pl-progress' as string]: `${state.muted ? 0 : Math.min(100, state.volume)}%` }}
+              onKeyUp={() => {
+                if (scrub !== null) player?.seekTo(scrub)
+                setScrub(null)
+              }}
+              style={{ ['--pl-progress' as string]: `${duration > 0 ? (position / duration) * 100 : 0}%` }}
+              disabled={duration <= 0}
             />
+            <span className="pl-time">{duration > 0 ? `−${clock(duration - position)}` : '--:--'}</span>
           </div>
 
-          <div className="pl-spacer" />
+          <div className="pl-row">
+            <button className="pl-btn pl-play" onClick={togglePause} aria-label={state.paused ? 'Play' : 'Pause'} title="Play or pause (Space)">
+              {state.paused ? <PlayIcon width={20} height={20} /> : <PauseIcon width={20} height={20} />}
+            </button>
+            <button className="pl-btn" onClick={() => player?.seekBy(-10)} aria-label="Back 10 seconds" title="Back 10 seconds (←)">
+              <SkipBackIcon width={19} height={19} />
+            </button>
+            <button className="pl-btn" onClick={() => player?.seekBy(10)} aria-label="Forward 10 seconds" title="Forward 10 seconds (→)">
+              <SkipForwardIcon width={19} height={19} />
+            </button>
 
-          <div
-            className="pl-tracks"
-            onMouseEnter={() => (menuOpen.current = true)}
-            onMouseLeave={() => (menuOpen.current = false)}
-          >
-            <TrackMenu
-              label="Subtitles"
-              icon={<SubtitlesIcon width={19} height={19} />}
-              tracks={state.tracks.filter((t) => t.kind === 'sub')}
-              offLabel="Off"
-              onPick={(id) => player?.setTrack('sub', id)}
-            />
-            <TrackMenu
-              label="Audio"
-              icon={<AudioIcon width={19} height={19} />}
-              tracks={state.tracks.filter((t) => t.kind === 'audio')}
-              onPick={(id) => player?.setTrack('audio', id)}
-            />
+            <div className="pl-volume">
+              <button className="pl-btn" onClick={() => player?.setMuted(!state.muted)} aria-label={state.muted ? 'Unmute' : 'Mute'} title="Mute (M)">
+                {state.muted || state.volume === 0 ? <MuteIcon width={19} height={19} /> : <VolumeIcon width={19} height={19} />}
+              </button>
+              <input
+                className="pl-range pl-range-sm"
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={state.muted ? 0 : state.volume}
+                aria-label="Volume"
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  if (state.muted && v > 0) player?.setMuted(false)
+                  player?.setVolume(v)
+                }}
+                style={{ ['--pl-progress' as string]: `${state.muted ? 0 : Math.min(100, state.volume)}%` }}
+              />
+            </div>
+
+            <div className="pl-spacer" />
+
+            <div
+              className="pl-tracks"
+              onMouseEnter={() => (menuOpen.current = true)}
+              onMouseLeave={() => (menuOpen.current = false)}
+            >
+              <TrackMenu
+                label="Subtitles"
+                icon={<SubtitlesIcon width={19} height={19} />}
+                tracks={state.tracks.filter((t) => t.kind === 'sub')}
+                offLabel="Off"
+                onPick={(id) => player?.setTrack('sub', id)}
+              />
+              <TrackMenu
+                label="Audio"
+                icon={<AudioIcon width={19} height={19} />}
+                tracks={state.tracks.filter((t) => t.kind === 'audio')}
+                onPick={(id) => player?.setTrack('audio', id)}
+              />
+            </div>
+            <button className="pl-btn" onClick={toggleFullscreen} aria-label={fullscreen ? 'Leave full screen' : 'Full screen'} title="Full screen (F)">
+              {fullscreen ? <ShrinkIcon width={19} height={19} /> : <ExpandIcon width={19} height={19} />}
+            </button>
           </div>
-          <button className="pl-btn" onClick={toggleFullscreen} aria-label={fullscreen ? 'Leave full screen' : 'Full screen'} title="Full screen (F)">
-            {fullscreen ? <ShrinkIcon width={19} height={19} /> : <ExpandIcon width={19} height={19} />}
-          </button>
         </div>
       </div>
-    </div>
+    </>
   )
 }

@@ -21,6 +21,7 @@ export const playerShortcutList: [keys: string[], action: string][] = [
   [['↑', '↓'], 'Volume'],
   [['M'], 'Mute'],
   [['F'], 'Full screen'],
+  [['I'], 'Buffer info on or off'],
   [['Esc', 'Q'], 'Close the player']
 ]
 
