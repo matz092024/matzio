@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { log } from './devlog'
 
 // Addons, settings, library and progress live as JSON files in the per-user app data folder
 // (%APPDATA%\Matzio\data on Windows). The installer never touches that folder, so updates keep them.
@@ -21,8 +22,9 @@ function loadAll(): Record<string, unknown> {
     if (name === key || !KEY.test(key)) continue
     try {
       out[key] = JSON.parse(readFileSync(join(dir, name), 'utf8'))
-    } catch {
+    } catch (e) {
       // A damaged file is skipped; the app falls back to its defaults for that key.
+      log('error', 'store', `Couldn’t read ${name}, using defaults`, e)
     }
   }
   return out
@@ -84,13 +86,16 @@ export function registerStore() {
 
   // Sync so the renderer has its data before the first render.
   ipcMain.on('store:load', (e) => {
+    const t = Date.now()
     e.returnValue = loadAll()
+    log('info', 'startup', `Saved data loaded in ${Date.now() - t} ms`)
   })
   ipcMain.on('store:write', (_e, key: string, value: unknown) => {
     try {
       write(key, value)
     } catch (err) {
       console.error(`Could not save ${key}:`, err)
+      log('error', 'store', `Couldn’t save ${key}`, err)
     }
   })
 }

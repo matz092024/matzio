@@ -119,6 +119,15 @@ const api = {
     install: (): Promise<void> => ipcRenderer.invoke('update:install'),
     onStatus: (cb: (s: UpdateStatus) => void) => subscribe('update:status', cb)
   },
+  devlog: {
+    setEnabled: (on: boolean) => ipcRenderer.send('devlog:set-enabled', on),
+    /** Dropped unless dev mode is on. */
+    write: (level: 'info' | 'warn' | 'error', scope: string, message: string, data?: unknown) => ipcRenderer.send('devlog:write', level, scope, message, data),
+    info: (): Promise<{ enabled: boolean; folder: string; size: number }> => ipcRenderer.invoke('devlog:info'),
+    openFolder: (): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke('devlog:open-folder'),
+    copy: (): Promise<{ ok: true; bytes: number } | { ok: false; error: string }> => ipcRenderer.invoke('devlog:copy'),
+    clear: (): Promise<void> => ipcRenderer.invoke('devlog:clear')
+  },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),

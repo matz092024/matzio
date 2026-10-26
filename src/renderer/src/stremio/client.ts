@@ -1,3 +1,4 @@
+import { devlog } from '../devlog'
 import type { ContentType, InstalledAddon, Manifest, ManifestCatalog, MetaDetail, MetaPreview, Stream } from './types'
 
 /** Accepts stremio:// links, bare base URLs, and full manifest URLs. */
@@ -15,9 +16,16 @@ function baseOf(transportUrl: string) {
 }
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, { signal })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json() as Promise<T>
+  const started = performance.now()
+  try {
+    const res = await fetch(url, { signal })
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    return (await res.json()) as T
+  } catch (e) {
+    // The dev log keeps the addon's host and the request path; keys in the link are stripped.
+    if (!signal?.aborted) devlog('warn', 'addon', `Request failed after ${Math.round(performance.now() - started)} ms: ${url}`, e instanceof Error ? e.message : String(e))
+    throw e
+  }
 }
 
 export async function fetchManifest(transportUrl: string): Promise<Manifest> {

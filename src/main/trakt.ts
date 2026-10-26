@@ -2,6 +2,7 @@ import { app, safeStorage } from 'electron'
 import { createHash, randomBytes } from 'crypto'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { log } from './devlog'
 
 /**
  * Trakt.tv sync. Sign-in uses Trakt's device-code flow (you approve Matzio on trakt.tv, no password
@@ -204,6 +205,7 @@ export class Trakt {
   private finishLogin(event: LoginEvent | null) {
     if (this.login) clearTimeout(this.login.timer)
     this.login = null
+    if (event) log(event.state === 'connected' ? 'info' : 'warn', 'trakt', `Sign-in ${event.state}`, 'message' in event ? event.message : undefined)
     if (event) this.onLogin(event)
   }
 
@@ -304,6 +306,7 @@ export class Trakt {
       })
       .catch((e) => {
         const status = e instanceof TraktError ? e.status : 0
+        log('warn', 'trakt', `History sync failed for ${items.length} item(s)`, e)
         // Network errors, rate limits and server trouble are retried later; anything else would fail again.
         const retry = status === 0 || status === 401 || status === 429 || status >= 500
         if (!retry) {
