@@ -1,6 +1,6 @@
 // Data is saved to disk through the main process (see src/main/store.ts) so it survives updates.
 // Older builds kept it in localStorage; the first read of each key moves it over once.
-// Outside Electron (no window.matzio) localStorage is still used. localStorage can be missing
+// localStorage still gets a copy as a backup, and is the only store outside Electron. localStorage can be missing
 // or throw (private mode, cleared data), so every access is guarded.
 
 const store = window.matzio?.storage
@@ -28,8 +28,8 @@ export function writeJson(key: string, value: unknown) {
   if (store) {
     saved[key] = value
     store.write(key, value)
-    return
   }
+  // Also kept in localStorage as a backup the file store can recover from if it ever fails.
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {
