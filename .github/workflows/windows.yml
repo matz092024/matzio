@@ -20,6 +20,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # A rising version per build lets the installer recognise it as an update of the installed app.
+      - run: npm pkg set version=0.1.${{ github.run_number }}
       - run: npm run dist:win
         env:
           # Optional: builds your Trakt app keys into the installer (see README). Empty means Settings asks for them.

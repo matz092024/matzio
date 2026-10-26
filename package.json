@@ -38,7 +38,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Matzio",
-      "artifactName": "Matzio-Setup.${ext}"
+      "artifactName": "Matzio-Setup.${ext}",
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
     }
   },
   "devDependencies": {
