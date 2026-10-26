@@ -19,6 +19,8 @@ export interface PlayRequest {
   mpvPath?: string
   /** Draw inside the Matzio window instead of mpv's own window. */
   embed?: boolean
+  /** Most seconds to buffer ahead (Settings → Buffer ahead). Left out, mpv's defaults apply. */
+  bufferSeconds?: number
 }
 
 export interface PlayerProgress {
@@ -48,6 +50,39 @@ export interface PlayerState {
   /** mpv is waiting on the network, so the controls can show a spinner. */
   buffering: boolean
   tracks: PlayerTrack[]
+}
+
+/** Buffer numbers for the optional info panel. Each is null when mpv can't say right now. */
+export interface PlayerStats {
+  /** Seconds buffered past the playhead. */
+  ahead: number | null
+  /** The most mpv will buffer ahead, in seconds. */
+  limitSeconds: number | null
+  /** Bytes buffered past the playhead. */
+  aheadBytes: number | null
+  /** Bytes held in the cache in total, including what's already been watched. */
+  totalBytes: number | null
+  /** The most mpv will hold ahead, in bytes. */
+  limitBytes: number | null
+  /** Download speed, in bytes per second. */
+  speed: number | null
+  /** filling: still downloading; full: reached the limit and waiting; complete: the rest of the file is in. */
+  fill: 'filling' | 'full' | 'complete' | null
+  /** While stalled, how far mpv is towards resuming (0-100). */
+  resumePercent: number | null
+  /** Frames the decoder skipped to keep up. */
+  droppedDecoder: number | null
+  /** Frames the video output skipped. */
+  droppedOutput: number | null
+}
+
+/**
+ * The memory ceiling that goes with a buffer length. mpv stops at whichever limit it hits
+ * first, and its default 150 MiB holds only ~20 s of a 4K remux, so the ceiling grows with
+ * the seconds asked for (room for ~50 Mbit/s), capped at 2 GiB.
+ */
+export function bufferMiB(seconds: number): number {
+  return Math.round(Math.min(2048, Math.max(150, seconds * 6)))
 }
 
 const isWindows = process.platform === 'win32'
@@ -154,6 +189,8 @@ export class Player {
   private progress: PlayerProgress = { key: '', position: 0, duration: 0 }
   private state: PlayerState = { ...idleState }
   private nextRequestId = 100
+  /** get_property calls waiting on mpv's reply, by request id. */
+  private pending = new Map<number, (data: unknown) => void>()
   /** When the current mpv was started, for the dev log's time-to-first-frame. */
   private launchedAt = 0
   private firstFrameLogged = false
@@ -218,6 +255,10 @@ export class Player {
       )
     } else {
       args.push('--fullscreen', '--osd-bar=yes', '--osd-font-size=32', '--osd-color=#DDDDDD', '--osd-border-size=1')
+    }
+    if (req.bufferSeconds && req.bufferSeconds > 0) {
+      const secs = Math.round(req.bufferSeconds)
+      args.push('--cache=yes', `--cache-secs=${secs}`, `--demuxer-max-bytes=${bufferMiB(secs)}MiB`)
     }
     if (req.start && req.start > 5) args.push(`--start=${Math.floor(req.start)}`)
     const headers = Object.entries(req.headers ?? {})
@@ -333,6 +374,58 @@ export class Player {
     socket.write(JSON.stringify({ command: cmd, request_id: this.nextRequestId++ }) + '\n')
   }
 
+  /** Asks mpv for one property; resolves to undefined if it isn't available or mpv doesn't answer. */
+  private getProperty(name: string): Promise<unknown> {
+    const socket = this.socket
+    if (!socket || socket.destroyed) return Promise.resolve(undefined)
+    const id = this.nextRequestId++
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        resolve(undefined)
+      }, 1000)
+      this.pending.set(id, (data) => {
+        clearTimeout(timer)
+        resolve(data)
+      })
+      socket.write(JSON.stringify({ command: ['get_property', name], request_id: id }) + '\n')
+    })
+  }
+
+  /** Buffer and frame numbers, read on demand so nothing is polled while the panel is off. */
+  async stats(): Promise<PlayerStats | null> {
+    if (!this.socket || this.socket.destroyed) return null
+    const names = [
+      'demuxer-cache-duration',
+      'demuxer-cache-state',
+      'cache-speed',
+      'cache-secs',
+      'demuxer-max-bytes',
+      'paused-for-cache',
+      'cache-buffering-state',
+      'decoder-frame-drop-count',
+      'frame-drop-count'
+    ] as const
+    const values = await Promise.all(names.map((n) => this.getProperty(n)))
+    const got = Object.fromEntries(names.map((n, i) => [n, values[i]])) as Record<(typeof names)[number], unknown>
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+    const cache = (got['demuxer-cache-state'] ?? {}) as { 'fw-bytes'?: unknown; 'total-bytes'?: unknown; eof?: unknown; idle?: unknown; 'eof-cached'?: unknown }
+    const limitSeconds = num(got['cache-secs'])
+    return {
+      ahead: num(got['demuxer-cache-duration']),
+      // mpv's default is "very high" (hours), which isn't a limit worth showing.
+      limitSeconds: limitSeconds !== null && limitSeconds < 24 * 3600 ? limitSeconds : null,
+      aheadBytes: num(cache['fw-bytes']),
+      totalBytes: num(cache['total-bytes']),
+      limitBytes: num(got['demuxer-max-bytes']),
+      speed: num(got['cache-speed']),
+      fill: cache.eof === true || cache['eof-cached'] === true ? 'complete' : cache.idle === true ? 'full' : cache.idle === false ? 'filling' : null,
+      resumePercent: got['paused-for-cache'] === true ? num(got['cache-buffering-state']) : null,
+      droppedDecoder: num(got['decoder-frame-drop-count']),
+      droppedOutput: num(got['frame-drop-count'])
+    }
+  }
+
   setPaused(paused: boolean) {
     this.command('set_property', 'pause', paused)
     // Reflect it right away so the button doesn't lag behind the keypress.
@@ -400,10 +493,16 @@ export class Player {
       while ((nl = buffer.indexOf('\n')) !== -1) {
         const line = buffer.slice(0, nl)
         buffer = buffer.slice(nl + 1)
-        let msg: { event?: string; name?: string; data?: unknown }
+        let msg: { event?: string; name?: string; data?: unknown; request_id?: number; error?: string }
         try {
           msg = JSON.parse(line)
         } catch {
+          continue
+        }
+        if (msg.request_id !== undefined && this.pending.has(msg.request_id)) {
+          const done = this.pending.get(msg.request_id)!
+          this.pending.delete(msg.request_id)
+          done(msg.error === 'success' ? msg.data : undefined)
           continue
         }
         if (msg.event !== 'property-change') continue

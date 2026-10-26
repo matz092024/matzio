@@ -14,6 +14,10 @@ export interface Settings {
   playerMode: 'integrated' | 'external'
   /** Where mpv lives; empty means find it automatically. */
   mpvPath: string
+  /** Most seconds of video mpv buffers ahead of the playhead. */
+  bufferSeconds: number
+  /** Show buffer numbers over the built-in player. */
+  bufferInfo: boolean
   /** Keep a log of errors and playback details to send with bug reports. */
   devMode: boolean
 }
@@ -25,6 +29,8 @@ const defaults: Settings = {
   quickPlay: 'first',
   playerMode: 'integrated',
   mpvPath: '',
+  bufferSeconds: 60,
+  bufferInfo: false,
   devMode: false
 }
 
