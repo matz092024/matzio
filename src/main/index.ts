@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { detectMpv, Player, type PlayRequest, type PlayerState } from './player'
 import { PlayerSurface } from './overlay'
-import { Trakt, type WatchedItem } from './trakt'
+import { Trakt, type ProgressItem, type WatchedItem } from './trakt'
 import { registerUpdater } from './updater'
 import { registerStore } from './store'
 import { log, mark, registerDevLog } from './devlog'
@@ -153,6 +153,7 @@ ipcMain.on('player:seek-by', (_e, seconds: number) => player.seekBy(seconds))
 ipcMain.on('player:volume', (_e, volume: number) => player.setVolume(volume))
 ipcMain.on('player:muted', (_e, muted: boolean) => player.setMuted(muted))
 ipcMain.on('player:track', (_e, kind: 'audio' | 'sub', id: number) => player.setTrack(kind, id))
+ipcMain.on('player:progress-interval', (_e, seconds: number) => player.setProgressInterval(seconds))
 ipcMain.on('player:fullscreen', (_e, full?: boolean) => {
   const win = mainWindow
   if (!win || win.isDestroyed()) return
@@ -190,6 +191,15 @@ ipcMain.handle('trakt:login', async () => {
 ipcMain.handle('trakt:cancel-login', () => trakt.cancelLogin())
 ipcMain.handle('trakt:disconnect', () => trakt.disconnect())
 ipcMain.handle('trakt:watched', (_e, item: WatchedItem) => trakt.markWatched(item))
+ipcMain.on('trakt:progress', (_e, item: ProgressItem) => trakt.saveProgress(item))
+ipcMain.handle('trakt:pull', async (_e, force?: boolean) => {
+  try {
+    return { ok: true as const, entries: await trakt.pull(force) }
+  } catch (e) {
+    log('warn', 'trakt', 'Pulling history failed', e)
+    return { ok: false as const, error: e instanceof Error ? e.message : 'Couldn’t reach Trakt.' }
+  }
+})
 
 app.whenReady().then(() => {
   mark('App ready')
@@ -199,7 +209,11 @@ app.whenReady().then(() => {
   )
   // Anything finished while offline goes out at start-up and then every 15 minutes.
   trakt.flush()
-  setInterval(() => trakt.flush(), 15 * 60 * 1000)
+  trakt.saveProgress()
+  setInterval(() => {
+    trakt.flush()
+    trakt.saveProgress()
+  }, 15 * 60 * 1000)
   registerUpdater(broadcast)
   createWindow()
   mark('Window created')

@@ -7,6 +7,8 @@ import { log } from './devlog'
 /**
  * Trakt.tv sync. Sign-in uses Trakt's device-code flow (you approve Matzio on trakt.tv, no password
  * ever reaches the app), and finished movies and episodes are added to your Trakt history.
+ * Where you are in a movie or episode is saved to Trakt's playback progress while you watch, and
+ * your Trakt history and resume points are pulled back into the app.
  * Everything runs here in the main process so the app keys and tokens never reach the page.
  *
  * Trakt apps made since October 2026 sign in with PKCE and have no client secret, so the secret is
@@ -32,6 +34,34 @@ export interface WatchedItem {
   watchedAt: string
 }
 
+/** Where you are in a movie or episode, as a percentage, for Trakt's playback progress. */
+export interface ProgressItem {
+  type: 'movie' | 'series'
+  id: string
+  season?: number
+  episode?: number
+  /** 0–100 */
+  progress: number
+}
+
+/** A watched title or resume point from Trakt, shaped like the app's own progress entries. */
+export interface ImportedEntry {
+  videoId: string
+  metaId: string
+  type: 'movie' | 'series'
+  name: string
+  poster?: string
+  background?: string
+  season?: number
+  episode?: number
+  episodeTitle?: string
+  /** 1 for finished titles. */
+  fraction: number
+  /** Seconds, when Trakt knows it; 0 otherwise. */
+  runtime: number
+  updatedAt: number
+}
+
 export interface TraktStatus {
   /** A Trakt API app (at least a client id) is available. */
   configured: boolean
@@ -40,6 +70,8 @@ export interface TraktStatus {
   username: string | null
   /** Finished titles not yet sent, e.g. because the computer was offline. */
   pending: number
+  /** When your Trakt history was last pulled into the app (ISO), or null if never. */
+  pulledAt: string | null
 }
 
 export type LoginEvent =
@@ -59,6 +91,11 @@ interface Stored {
   tokens?: Tokens
   username?: string | null
   pending?: WatchedItem[]
+  /** The latest position per video not yet saved to Trakt. Only the newest one for each video is kept. */
+  progress?: Record<string, ProgressItem>
+  /** Trakt's last-activity stamps at the last pull, to skip pulls when nothing changed. */
+  activity?: string
+  pulledAt?: string
 }
 
 const file = () => join(app.getPath('userData'), 'trakt.json')
@@ -99,10 +136,34 @@ function traktIds(id: string): Record<string, string | number> | null {
   return null
 }
 
+const progressKey = (i: { id: string; season?: number; episode?: number }) => (i.season === undefined ? i.id : `${i.id}:${i.season}:${i.episode}`)
+
+/** Cinemeta's artwork, which is what the app shows for these titles anyway. */
+const art = (imdb?: string) =>
+  imdb ? { poster: `https://images.metahub.space/poster/medium/${imdb}/img`, background: `https://images.metahub.space/background/medium/${imdb}/img` } : {}
+
+/** The Stremio id for a Trakt title: its IMDb id, otherwise its TMDB id. */
+function stremioId(ids?: { imdb?: string | null; tmdb?: number | null }): string | null {
+  if (ids?.imdb && /^tt\d+$/.test(ids.imdb)) return ids.imdb
+  if (ids?.tmdb) return `tmdb:${ids.tmdb}`
+  return null
+}
+
+const time = (iso?: string | null) => (iso ? Date.parse(iso) || 0 : 0)
+
+interface TraktTitle {
+  title?: string
+  runtime?: number
+  ids?: { imdb?: string | null; tmdb?: number | null }
+}
+
 export class Trakt {
   private data: Stored = load()
   private login: { timer: NodeJS.Timeout; deadline: number } | null = null
   private flushing: Promise<void> | null = null
+  private savingProgress = false
+  /** Trakt asked us to slow down; nothing is sent before this time. */
+  private backoffUntil = 0
 
   constructor(private onLogin: (e: LoginEvent) => void, private onChange: (s: TraktStatus) => void) {}
 
@@ -121,7 +182,8 @@ export class Trakt {
       configured: !!this.app.clientId,
       builtIn: !!BUILT_IN.clientId,
       username: this.data.tokens ? (this.data.username ?? '') : null,
-      pending: this.data.pending?.length ?? 0
+      pending: this.data.pending?.length ?? 0,
+      pulledAt: this.data.tokens ? (this.data.pulledAt ?? null) : null
     }
   }
 
@@ -138,7 +200,7 @@ export class Trakt {
     return this.status()
   }
 
-  private async request<T>(path: string, body?: unknown, auth = false): Promise<{ status: number; data: T }> {
+  private async request<T>(path: string, body?: unknown, auth = false, method?: 'DELETE'): Promise<{ status: number; data: T; retryAfter: number }> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'trakt-api-version': '2',
@@ -146,7 +208,7 @@ export class Trakt {
       'User-Agent': `Matzio/${app.getVersion()}`
     }
     if (auth && this.data.tokens) headers.Authorization = `Bearer ${this.data.tokens.access_token}`
-    const res = await fetch(API + path, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body) })
+    const res = await fetch(API + path, { method: method ?? (body === undefined ? 'GET' : 'POST'), headers, body: body === undefined ? undefined : JSON.stringify(body) })
     const text = await res.text()
     let data: unknown = null
     try {
@@ -154,7 +216,7 @@ export class Trakt {
     } catch {
       // Some error replies are plain text.
     }
-    return { status: res.status, data: data as T }
+    return { status: res.status, data: data as T, retryAfter: Number(res.headers.get('retry-after')) || 0 }
   }
 
   /** Starts sign-in. Show the code to the user; the result arrives through onLogin. */
@@ -186,6 +248,7 @@ export class Trakt {
           this.update({ username })
           this.onLogin({ state: 'connected', username })
           this.flush()
+          this.saveProgress()
           return
         }
         if (r.status === 418) return this.finishLogin({ state: 'denied', message: 'Access was denied on trakt.tv.' })
@@ -225,7 +288,7 @@ export class Trakt {
   async disconnect() {
     this.cancelLogin()
     const token = this.data.tokens?.access_token
-    this.update({ tokens: undefined, username: undefined, pending: [] })
+    this.update({ tokens: undefined, username: undefined, pending: [], progress: {}, activity: undefined, pulledAt: undefined })
     if (token) {
       // Best effort: the app forgets the token either way.
       await this.request('/oauth/revoke', { token, ...this.credentials() }).catch(() => {})
@@ -254,12 +317,13 @@ export class Trakt {
   }
 
   /** A signed-in request that refreshes the token when it has expired. */
-  private async authed<T>(path: string, body?: unknown) {
+  private async authed<T>(path: string, body?: unknown, method?: 'DELETE') {
     const t = this.data.tokens
     if (!t) throw new TraktError(401, 'Not connected to Trakt.')
     if (Date.now() / 1000 > t.created_at + t.expires_in - 3600) await this.refresh()
-    let r = await this.request<T>(path, body, true)
-    if (r.status === 401 && (await this.refresh())) r = await this.request<T>(path, body, true)
+    let r = await this.request<T>(path, body, true, method)
+    if (r.status === 401 && (await this.refresh())) r = await this.request<T>(path, body, true, method)
+    if (r.status === 429) this.backoffUntil = Date.now() + Math.max(r.retryAfter, 1) * 1000
     if (r.status >= 400) throw new TraktError(r.status, `Trakt replied with HTTP ${r.status}.`)
     return r
   }
@@ -268,7 +332,9 @@ export class Trakt {
   markWatched(item: WatchedItem) {
     if (!this.data.tokens || !traktIds(item.id)) return
     if (item.type === 'series' && (item.season === undefined || item.episode === undefined)) return
-    this.update({ pending: [...(this.data.pending ?? []), item] })
+    // A finished title has no resume point left to save.
+    const { [progressKey(item)]: _done, ...progress } = this.data.progress ?? {}
+    this.update({ pending: [...(this.data.pending ?? []), item], progress })
     this.flush()
   }
 
@@ -303,6 +369,7 @@ export class Trakt {
         // Titles Trakt couldn't match are dropped too; retrying them won't help.
         const sent = new Set(items)
         this.update({ pending: (this.data.pending ?? []).filter((i) => !sent.has(i)) })
+        return this.clearPlayback(items)
       })
       .catch((e) => {
         const status = e instanceof TraktError ? e.status : 0
@@ -318,5 +385,148 @@ export class Trakt {
         this.flushing = null
       })
     return this.flushing
+  }
+
+  /** Trakt keeps a resume point after a title is added to history, so finished titles have theirs removed. */
+  private async clearPlayback(items: WatchedItem[]) {
+    try {
+      const r = await this.authed<{ id: number; type: string; movie?: TraktTitle; show?: TraktTitle; episode?: { season: number; number: number } }[]>('/sync/playback')
+      const done = new Set(items.map(progressKey))
+      for (const p of r.data ?? []) {
+        const id = stremioId(p.type === 'movie' ? p.movie?.ids : p.show?.ids)
+        if (!id) continue
+        const key = p.type === 'movie' ? id : progressKey({ id, season: p.episode?.season, episode: p.episode?.number })
+        if (done.has(key)) await this.authed(`/sync/playback/${p.id}`, undefined, 'DELETE')
+      }
+    } catch (e) {
+      log('warn', 'trakt', 'Couldn’t clear finished resume points', e)
+    }
+  }
+
+  /**
+   * Saves where you are in a movie or episode to Trakt (as a paused scrobble, which is what Trakt
+   * keeps as playback progress). Without an item, just retries whatever is waiting. Only the newest
+   * position per video is kept, so being offline for an hour still sends one call per video.
+   */
+  saveProgress(item?: ProgressItem) {
+    if (!this.data.tokens) return
+    if (item) {
+      if (!traktIds(item.id) || item.progress < 1 || item.progress >= 100) return
+      if (item.type === 'series' && (item.season === undefined || item.episode === undefined)) return
+      // Kept in memory and written to disk with the next status change, so a tick doesn't rewrite the file.
+      this.data.progress = { ...(this.data.progress ?? {}), [progressKey(item)]: { ...item, progress: Math.round(item.progress * 100) / 100 } }
+      save(this.data)
+    }
+    void this.sendProgress()
+  }
+
+  private async sendProgress() {
+    if (this.savingProgress || Date.now() < this.backoffUntil) return
+    this.savingProgress = true
+    try {
+      for (const [key, item] of Object.entries(this.data.progress ?? {})) {
+        const ids = traktIds(item.id)!
+        const body =
+          item.type === 'movie'
+            ? { movie: { ids }, progress: item.progress }
+            : { show: { ids }, episode: { season: item.season, number: item.episode }, progress: item.progress }
+        let drop = true
+        try {
+          await this.authed('/scrobble/pause', body)
+        } catch (e) {
+          const status = e instanceof TraktError ? e.status : 0
+          // Offline, rate limited or Trakt having trouble: keep it and try again with the next tick.
+          drop = !(status === 0 || status === 401 || status === 429 || status >= 500)
+          log(drop ? 'warn' : 'info', 'trakt', `Saving progress failed (${status || 'offline'})`, drop ? item : undefined)
+          if (!drop) return
+        }
+        // A newer position may have arrived while this one was on its way; that one still needs sending.
+        const now = this.data.progress?.[key]
+        if (drop && now && now.progress === item.progress) {
+          const { [key]: _sent, ...rest } = this.data.progress ?? {}
+          this.data.progress = rest
+          save(this.data)
+        }
+        // Trakt allows about one write a second.
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+    } finally {
+      this.savingProgress = false
+    }
+  }
+
+  /**
+   * Your Trakt history and resume points, for the app to merge into its own. Returns null when
+   * nothing changed on Trakt since the last pull (unless forced), so regular checks cost one call.
+   */
+  async pull(force = false): Promise<ImportedEntry[] | null> {
+    if (!this.data.tokens) return null
+    const act = await this.authed<{ movies?: { watched_at?: string; paused_at?: string }; episodes?: { watched_at?: string; paused_at?: string } }>(
+      '/sync/last_activities'
+    )
+    const a = act.data ?? {}
+    const stamp = [a.movies?.watched_at, a.movies?.paused_at, a.episodes?.watched_at, a.episodes?.paused_at].join('|')
+    if (!force && stamp === this.data.activity) return null
+
+    type Watched = { last_watched_at?: string; movie?: TraktTitle; show?: TraktTitle; seasons?: { number: number; episodes: { number: number; last_watched_at?: string }[] }[] }
+    type Playback = { progress: number; paused_at?: string; type: string; movie?: TraktTitle; show?: TraktTitle; episode?: TraktTitle & { season: number; number: number } }
+    const [movies, shows, playback] = await Promise.all([
+      this.authed<Watched[]>('/sync/watched/movies'),
+      this.authed<Watched[]>('/sync/watched/shows'),
+      this.authed<Playback[]>('/sync/playback?extended=full')
+    ])
+
+    const out: ImportedEntry[] = []
+    for (const w of movies.data ?? []) {
+      const id = stremioId(w.movie?.ids)
+      if (!id) continue
+      out.push({ videoId: id, metaId: id, type: 'movie', name: w.movie?.title ?? '', ...art(w.movie?.ids?.imdb ?? undefined), fraction: 1, runtime: 0, updatedAt: time(w.last_watched_at) })
+    }
+    for (const w of shows.data ?? []) {
+      const id = stremioId(w.show?.ids)
+      if (!id) continue
+      for (const season of w.seasons ?? []) {
+        // Specials (season 0) aren't in the app's episode lists.
+        if (season.number === 0) continue
+        for (const ep of season.episodes ?? []) {
+          out.push({
+            videoId: `${id}:${season.number}:${ep.number}`,
+            metaId: id,
+            type: 'series',
+            name: w.show?.title ?? '',
+            ...art(w.show?.ids?.imdb ?? undefined),
+            season: season.number,
+            episode: ep.number,
+            fraction: 1,
+            runtime: 0,
+            updatedAt: time(ep.last_watched_at ?? w.last_watched_at)
+          })
+        }
+      }
+    }
+    for (const p of playback.data ?? []) {
+      const title = p.type === 'movie' ? p.movie : p.show
+      const id = stremioId(title?.ids)
+      if (!id || !(p.progress > 0)) continue
+      const ep = p.type === 'episode' ? p.episode : undefined
+      if (p.type === 'episode' && !ep) continue
+      out.push({
+        videoId: ep ? `${id}:${ep.season}:${ep.number}` : id,
+        metaId: id,
+        type: ep ? 'series' : 'movie',
+        name: title?.title ?? '',
+        ...art(title?.ids?.imdb ?? undefined),
+        season: ep?.season,
+        episode: ep?.number,
+        episodeTitle: ep?.title,
+        fraction: Math.min(1, p.progress / 100),
+        runtime: ((ep ? (ep.runtime ?? title?.runtime) : title?.runtime) ?? 0) * 60,
+        updatedAt: time(p.paused_at)
+      })
+    }
+
+    this.update({ activity: stamp, pulledAt: new Date().toISOString() })
+    log('info', 'trakt', `Pulled ${out.length} watched or in-progress item(s) from Trakt`)
+    return out
   }
 }

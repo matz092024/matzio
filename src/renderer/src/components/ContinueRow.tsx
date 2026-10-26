@@ -6,7 +6,9 @@ import { usePlayback } from '../playback'
 
 function timeLeft(e: WatchEntry) {
   const mins = Math.max(1, Math.round((e.duration - e.position) / 60))
-  return mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min left` : `${mins} min left`
+  // Resume points from Trakt are a percentage of a runtime Trakt only roughly knows.
+  const about = e.estimated ? 'about ' : ''
+  return mins >= 60 ? `${about}${Math.floor(mins / 60)} h ${mins % 60} min left` : `${about}${mins} min left`
 }
 
 /** Titles you're partway through, most recent first. */

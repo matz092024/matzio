@@ -752,6 +752,10 @@ body.overlay-body { background: transparent; }
 .pl-range:disabled { opacity: 0.4; cursor: default; }
 .pl-range-sm::-webkit-slider-thumb { width: 9px; height: 9px; margin-top: -3px; }
 
+/* Settings → Save progress every */
+.interval-slider { display: flex; align-items: center; gap: 12px; width: 220px; flex-shrink: 0; }
+.interval-value { font-size: 13px; color: var(--text-2); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+
 /* Buffer info: small and dim, top right, never in the way of clicks. */
 .pl-stats {
   position: fixed;

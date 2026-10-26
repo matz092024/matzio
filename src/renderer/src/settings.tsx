@@ -14,6 +14,8 @@ export interface Settings {
   playerMode: 'integrated' | 'external'
   /** Where mpv lives; empty means find it automatically. */
   mpvPath: string
+  /** How often, in seconds, your place in a movie or episode is saved (and sent to Trakt). */
+  progressInterval: number
   /** Most seconds of video mpv buffers ahead of the playhead. */
   bufferSeconds: number
   /** Show buffer numbers over the built-in player. */
@@ -29,6 +31,7 @@ const defaults: Settings = {
   quickPlay: 'first',
   playerMode: 'integrated',
   mpvPath: '',
+  progressInterval: 5,
   bufferSeconds: 60,
   bufferInfo: false,
   devMode: false
