@@ -6,6 +6,7 @@ import type { MetaDetail, MetaPreview, Video } from './stremio/types'
 import { isWatched, useProgress, type WatchEntry } from './progress'
 import { useSettings } from './settings'
 import StreamPicker from './components/StreamPicker'
+import { devlog } from './devlog'
 
 const RESUME_MIN_SECONDS = 30
 
@@ -67,6 +68,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     if (!player) return
     const offEnded = player.onEnded((p) => {
       setStatus((s) => (s.kind === 'playing' || s.kind === 'busy' ? { kind: 'idle' } : s))
+      if (p.error) devlog('error', 'playback', 'mpv reported an error', p.error)
       if (p.error) setStatus({ kind: 'error', text: `mpv couldn’t start: ${p.error}`, settingsLink: true })
     })
     // e.g. the built-in player couldn't draw into the window, so mpv opened on its own.
@@ -108,6 +110,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       episodeTitle: video?.title ?? video?.name
     })
     setStatus({ kind: 'busy', text: 'Opening player…' })
+    devlog('info', 'playback', `Starting ${title}`, {
+      addon: stream.addon,
+      stream: stream.name ?? stream.title ?? '',
+      resumeAt: Math.round(startAt),
+      mode: settings.playerMode
+    })
     const result = await player.play({
       key: videoId,
       url: stream.url,
@@ -117,6 +125,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       mpvPath: settings.mpvPath || undefined,
       embed: settings.playerMode !== 'external'
     })
+    if (!result.ok) devlog('error', 'playback', 'Couldn’t start playback', result.error)
     // The embedded player has its own controls on screen, so it needs no toast.
     if (result.ok) setStatus(result.embedded ? { kind: 'idle' } : { kind: 'playing', text: `Playing ${title}` })
     else if (result.error === 'mpv-missing') setStatus({ kind: 'error', text: 'mpv couldn’t be found. Select mpv.exe in Settings.', settingsLink: true })
@@ -145,6 +154,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       if (stale()) return
       const playable = all.filter(isPlayable)
       const target = { meta, video }
+      devlog('info', 'playback', `Found ${all.length} stream(s), ${playable.length} playable, for ${meta.type} ${video?.id ?? meta.id}`)
 
       if (playable.length === 0) {
         setStatus({
@@ -163,6 +173,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       }
       await start(target, playable[0])
     } catch (e) {
+      devlog('error', 'playback', 'Finding streams failed', e)
       if (!stale()) setStatus({ kind: 'error', text: e instanceof Error ? e.message : 'Something went wrong.' })
     }
   }

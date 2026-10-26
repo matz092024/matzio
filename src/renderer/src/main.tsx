@@ -9,6 +9,7 @@ import { ProgressProvider } from './progress'
 import { PlaybackProvider } from './playback'
 import PlayerOverlay from './player/PlayerOverlay'
 import './styles/global.css'
+import { installDevlog } from './devlog'
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 
@@ -16,6 +17,7 @@ const root = ReactDOM.createRoot(document.getElementById('root')!)
 // so they load the same bundle with nothing but the theme around them.
 if (/^#\/?overlay/.test(window.location.hash)) {
   document.body.classList.add('overlay-body')
+  installDevlog('overlay')
   root.render(
     <React.StrictMode>
       <SettingsProvider persist={false}>
@@ -24,6 +26,7 @@ if (/^#\/?overlay/.test(window.location.hash)) {
     </React.StrictMode>
   )
 } else {
+  installDevlog('app')
   root.render(
     <React.StrictMode>
       <SettingsProvider>

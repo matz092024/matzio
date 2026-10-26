@@ -1,5 +1,6 @@
 import { app, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import { log } from './devlog'
 
 export type UpdateStatus =
   | { state: 'unsupported' }
@@ -27,10 +28,16 @@ export function registerUpdater(broadcast: (channel: string, payload: unknown) =
   ipcMain.handle('update:check', () => check())
   ipcMain.handle('update:install', () => {
     // Silent reinstall into the same folder, then start Matzio again.
-    if (status.state === 'ready') autoUpdater.quitAndInstall(true, true)
+    if (status.state === 'ready') {
+      log('info', 'update', `Restarting to install ${status.version}`)
+      autoUpdater.quitAndInstall(true, true)
+    }
   })
 
-  if (!app.isPackaged) return
+  if (!app.isPackaged) {
+    log('info', 'update', 'Running from source, so update checks are off')
+    return
+  }
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
@@ -39,15 +46,26 @@ export function registerUpdater(broadcast: (channel: string, payload: unknown) =
   autoUpdater.logger = null
 
   autoUpdater.on('checking-for-update', () => {
+    log('info', 'update', `Checking for updates (on ${app.getVersion()})`)
     if (status.state !== 'ready' && status.state !== 'downloading') set({ state: 'checking' })
   })
-  autoUpdater.on('update-not-available', () => set({ state: 'up-to-date' }))
-  autoUpdater.on('update-available', (info) => set({ state: 'downloading', version: info.version, percent: 0 }))
+  autoUpdater.on('update-not-available', (info) => {
+    log('info', 'update', `Up to date (feed has ${info.version})`)
+    set({ state: 'up-to-date' })
+  })
+  autoUpdater.on('update-available', (info) => {
+    log('info', 'update', `Downloading ${info.version}`)
+    set({ state: 'downloading', version: info.version, percent: 0 })
+  })
   autoUpdater.on('download-progress', (p) => {
     if (status.state === 'downloading') set({ ...status, percent: Math.round(p.percent) })
   })
-  autoUpdater.on('update-downloaded', (info) => set({ state: 'ready', version: info.version }))
+  autoUpdater.on('update-downloaded', (info) => {
+    log('info', 'update', `${info.version} downloaded and ready to install`)
+    set({ state: 'ready', version: info.version })
+  })
   autoUpdater.on('error', (e) => {
+    log('error', 'update', 'Update check failed', e)
     // A finished download stays ready even if a later check fails (e.g. offline).
     if (status.state !== 'ready') set({ state: 'error', message: friendly(e) })
   })

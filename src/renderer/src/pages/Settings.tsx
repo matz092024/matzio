@@ -4,6 +4,7 @@ import AddonsSettings from '../components/AddonsSettings'
 import PlayerSetting from '../components/PlayerSetting'
 import TraktSettings from '../components/TraktSettings'
 import UpdateSettings from '../components/UpdateSettings'
+import DevSettings from '../components/DevSettings'
 import { playerShortcutList, shortcutList } from '../shortcuts'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -100,6 +101,8 @@ export default function Settings() {
         </dl>
         <p className="setting-hint">The second group works while video is playing in the Matzio window. With the player set to a separate window, mpv’s own keys apply instead.</p>
       </section>
+
+      <DevSettings />
     </div>
   )
 }

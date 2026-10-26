@@ -14,6 +14,8 @@ export interface Settings {
   playerMode: 'integrated' | 'external'
   /** Where mpv lives; empty means find it automatically. */
   mpvPath: string
+  /** Keep a log of errors and playback details to send with bug reports. */
+  devMode: boolean
 }
 
 const defaults: Settings = {
@@ -22,7 +24,8 @@ const defaults: Settings = {
   glass: 'normal',
   quickPlay: 'first',
   playerMode: 'integrated',
-  mpvPath: ''
+  mpvPath: '',
+  devMode: false
 }
 
 const STORAGE_KEY = 'matzio.settings'
@@ -41,7 +44,10 @@ export function SettingsProvider({ children, persist = true }: { children: React
   const [settings, setSettings] = useState<Settings>(load)
 
   useEffect(() => {
-    if (persist) writeJson(STORAGE_KEY, settings)
+    if (persist) {
+      writeJson(STORAGE_KEY, settings)
+      window.matzio?.devlog.setEnabled(settings.devMode)
+    }
     const root = document.documentElement
     root.dataset.night = String(settings.nightDim)
     root.dataset.motion = settings.reduceMotion ? 'reduce' : 'full'

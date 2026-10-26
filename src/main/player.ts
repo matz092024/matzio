@@ -4,6 +4,7 @@ import { statSync } from 'fs'
 import { connect, type Socket } from 'net'
 import { tmpdir } from 'os'
 import { delimiter, join } from 'path'
+import { isDevMode, log } from './devlog'
 
 export interface PlayRequest {
   /** Echoed back with progress so the app knows which video it belongs to. */
@@ -153,6 +154,9 @@ export class Player {
   private progress: PlayerProgress = { key: '', position: 0, duration: 0 }
   private state: PlayerState = { ...idleState }
   private nextRequestId = 100
+  /** When the current mpv was started, for the dev log's time-to-first-frame. */
+  private launchedAt = 0
+  private firstFrameLogged = false
 
   constructor(
     private hooks: {
@@ -175,10 +179,14 @@ export class Player {
 
   play(req: PlayRequest): { ok: true; embedded: boolean } | { ok: false; error: string } {
     const found = findAllMpv(req.mpvPath)
-    if (found.length === 0) return { ok: false, error: 'mpv-missing' }
+    if (found.length === 0) {
+      log('error', 'mpv', 'No mpv found', { customPath: req.mpvPath ?? '', searched: [...new Set(candidates(req.mpvPath))] })
+      return { ok: false, error: 'mpv-missing' }
+    }
 
     const wid = req.embed ? this.hooks.embedTarget() : null
     const embedded = wid !== null
+    if (req.embed && !embedded) log('warn', 'mpv', 'Built-in player asked for, but the window handle was unavailable; using a separate window')
 
     this.stop()
     this.progress = { key: req.key, position: req.start ?? 0, duration: 0 }
@@ -215,6 +223,9 @@ export class Player {
       // mpv splits this list on commas, so escape any inside values.
       args.push(`--http-header-fields=${headers.map(([k, v]) => `${k}: ${v}`.replace(/,/g, '\\,')).join(',')}`)
     }
+    // In dev mode mpv's own warnings and errors are captured too.
+    const dev = isDevMode()
+    if (dev) args.push('--msg-level=all=warn', '--term-status-msg=')
     args.push('--', req.url)
 
     // spawn throws straight away for files Windows can't run (EFTYPE, EACCES), so fall through to the next copy.
@@ -222,20 +233,47 @@ export class Player {
     const failures: string[] = []
     for (const mpv of found) {
       try {
-        // stderr is kept so a failed start can say what mpv complained about.
-        proc = spawn(mpv, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: false })
+        // stderr is kept so a failed start can say what mpv complained about; dev mode logs stdout too.
+        proc = spawn(mpv, args, { stdio: ['ignore', dev ? 'pipe' : 'ignore', 'pipe'], windowsHide: false })
+        log('info', 'mpv', `Started ${mpv} (pid ${proc.pid ?? '?'})`, {
+          title: req.title,
+          embedded,
+          start: req.start ?? 0,
+          // Header values can hold keys, so only their names are kept.
+          headers: Object.keys(req.headers ?? {}),
+          url: req.url,
+          args: args.slice(0, -2).filter((a) => !a.startsWith('--http-header-fields') && !a.startsWith('--input-ipc-server'))
+        })
         break
       } catch (e) {
         failures.push(`${mpv} (${(e as NodeJS.ErrnoException).code ?? (e as Error).message})`)
+        log('warn', 'mpv', `Couldn’t run ${mpv}`, e)
       }
     }
     if (!proc) return { ok: false, error: `Couldn’t start mpv: ${failures.join(', ')}` }
     this.proc = proc
+    const launchedAt = Date.now()
+    this.launchedAt = launchedAt
+    this.firstFrameLogged = false
     let spawnError: string | undefined
     let stderr = ''
     proc.stderr?.on('data', (chunk: Buffer) => {
       stderr = (stderr + chunk.toString('utf8')).slice(-4000)
     })
+    if (dev) {
+      // A broken stream can make mpv print the same warning many times, so each run logs at most 200 lines.
+      let lines = 0
+      const capture = (chunk: Buffer) => {
+        for (const line of chunk.toString('utf8').split(/\r?\n/)) {
+          if (!line.trim() || lines >= 200) continue
+          lines++
+          log('warn', 'mpv', line.trim().slice(0, 500))
+          if (lines === 200) log('warn', 'mpv', 'More mpv output was left out')
+        }
+      }
+      proc.stdout?.on('data', capture)
+      proc.stderr?.on('data', capture)
+    }
 
     this.pushState({
       ...idleState,
@@ -249,13 +287,15 @@ export class Player {
 
     proc.on('error', (e) => {
       spawnError = e.message
+      log('error', 'mpv', 'mpv process error', e)
       // A process that never started won't emit 'exit', so report the failure here.
       if (proc.pid === undefined && this.proc === proc) {
         this.proc = null
         this.finish(spawnError)
       }
     })
-    proc.on('exit', (code) => {
+    proc.on('exit', (code, signal) => {
+      log(code ? 'warn' : 'info', 'mpv', `mpv exited (code ${code ?? '-'}${signal ? `, ${signal}` : ''}) after ${Date.now() - launchedAt} ms`)
       if (this.proc !== proc) return
       this.proc = null
       this.socket?.destroy()
@@ -278,6 +318,7 @@ export class Player {
   }
 
   private finish(error?: string, mpvError?: string) {
+    log(error || mpvError ? 'error' : 'info', 'player', `Playback ended at ${Math.round(this.progress.position)} of ${Math.round(this.progress.duration)} s`, error ?? mpvError)
     // Clear the state first: onEnded may start the same stream again in mpv's own window.
     this.pushState({ ...idleState })
     this.hooks.onEnded({ ...this.progress, error, mpvError })
@@ -332,9 +373,11 @@ export class Player {
     socket.once('error', () => {
       socket.destroy()
       if (attempt < 40) setTimeout(() => this.connect(path, proc, attempt + 1), 150)
+      else log('error', 'mpv', 'Couldn’t connect to mpv’s control pipe, so the controls won’t work for this video')
     })
     socket.once('connect', () => {
       if (this.proc !== proc) return socket.destroy()
+      log('info', 'mpv', `Control pipe connected after ${Date.now() - this.launchedAt} ms`)
       this.socket = socket
       const observe = (id: number, name: string) => socket.write(JSON.stringify({ command: ['observe_property', id, name] }) + '\n')
       observe(1, 'time-pos')
@@ -389,6 +432,11 @@ export class Player {
         }
         // The first frame means it's really playing, not still opening the stream.
         if (name === 'time-pos' && this.state.buffering && !this.state.paused) this.state.buffering = false
+        if (name === 'time-pos' && !this.firstFrameLogged) {
+          this.firstFrameLogged = true
+          log('info', 'mpv', `First frame after ${Date.now() - this.launchedAt} ms`)
+        }
+        if (name === 'paused-for-cache' && data === true && this.firstFrameLogged) log('info', 'mpv', `Buffering at ${Math.round(this.progress.position)} s`)
 
         const now = Date.now()
         if (name !== 'time-pos' || now - lastUi > 250) {

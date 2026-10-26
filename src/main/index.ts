@@ -5,9 +5,11 @@ import { ControlsOverlay, nativeWindowId } from './overlay'
 import { Trakt, type WatchedItem } from './trakt'
 import { registerUpdater } from './updater'
 import { registerStore } from './store'
+import { log, mark, registerDevLog } from './devlog'
 
 // Pin the data folder to %APPDATA%\Matzio so dev runs, installs and updates all share it.
 app.setPath('userData', join(app.getPath('appData'), 'Matzio'))
+registerDevLog()
 registerStore()
 
 /** The app window. mpv draws into it, and the player controls sit in an overlay above it. */
@@ -33,7 +35,21 @@ function createWindow(): BrowserWindow {
     }
   })
 
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => {
+    mark('Window ready to show')
+    win.show()
+  })
+
+  // Dev mode: page crashes, failed loads and script errors from the window.
+  const wc = win.webContents
+  wc.once('did-finish-load', () => mark('Page loaded'))
+  wc.on('did-fail-load', (_e, code, description, url) => log('error', 'window', `Page failed to load (${code} ${description})`, url))
+  wc.on('render-process-gone', (_e, details) => log('error', 'window', `Page process ended: ${details.reason}`, { exitCode: details.exitCode }))
+  wc.on('unresponsive', () => log('warn', 'window', 'Window stopped responding'))
+  wc.on('responsive', () => log('info', 'window', 'Window responding again'))
+  wc.on('console-message', (e) => {
+    if (e.level === 'error' || e.level === 'warning') log(e.level === 'error' ? 'error' : 'warn', 'console', e.message, `${e.sourceId}:${e.lineNumber}`)
+  })
 
   win.on('maximize', () => win.webContents.send('window:maximized', true))
   win.on('unmaximize', () => win.webContents.send('window:maximized', false))
@@ -89,7 +105,9 @@ const onEnded = (p: { key: string; position: number; duration: number; error?: s
   // mpv quitting within a few seconds without ever opening the file usually means it
   // couldn't draw into our window, so give the same stream its own mpv window instead.
   if (attempt && p.duration === 0 && Date.now() - attempt.startedAt < 6000) {
+    log('warn', 'player', `Built-in player quit after ${Date.now() - attempt.startedAt} ms without opening the file; retrying in mpv's own window`, p.error ?? p.mpvError)
     const retry = player.play({ ...attempt.req, embed: false })
+    if (!retry.ok) log('error', 'player', 'Separate-window fallback failed too', retry.error)
     if (retry.ok) {
       const why = p.mpvError ? ` mpv said: ${p.mpvError}` : ''
       broadcast('player:notice', `The built-in player couldn’t start, so mpv opened in its own window.${why}`)
@@ -114,8 +132,10 @@ ipcMain.handle('player:play', (_e, req: PlayRequest) => {
   try {
     const result = player.play(req)
     embedAttempt = result.ok && result.embedded ? { req, startedAt: Date.now() } : null
+    if (!result.ok) log('error', 'player', 'Play request failed', result.error)
     return result
   } catch (e) {
+    log('error', 'player', 'Play request threw', e)
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 })
@@ -157,6 +177,7 @@ ipcMain.handle('trakt:login', async () => {
     shell.openExternal(code.verificationUrl).catch(() => {})
     return { ok: true as const, ...code }
   } catch (e) {
+    log('error', 'trakt', 'Sign-in could not start', e)
     return { ok: false as const, error: e instanceof Error ? e.message : 'Couldn’t reach Trakt.' }
   }
 })
@@ -165,6 +186,7 @@ ipcMain.handle('trakt:disconnect', () => trakt.disconnect())
 ipcMain.handle('trakt:watched', (_e, item: WatchedItem) => trakt.markWatched(item))
 
 app.whenReady().then(() => {
+  mark('App ready')
   trakt = new Trakt(
     (e) => broadcast('trakt:login-result', e),
     (s) => broadcast('trakt:status', s)
@@ -174,6 +196,7 @@ app.whenReady().then(() => {
   setInterval(() => trakt.flush(), 15 * 60 * 1000)
   registerUpdater(broadcast)
   createWindow()
+  mark('Window created')
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
