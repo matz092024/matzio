@@ -2,6 +2,11 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { detectMpv, Player, type PlayRequest } from './player'
 import { Trakt, type WatchedItem } from './trakt'
+import { registerStore } from './store'
+
+// Pin the data folder to %APPDATA%\Matzio so dev runs, installs and updates all share it.
+app.setPath('userData', join(app.getPath('appData'), 'Matzio'))
+registerStore()
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
