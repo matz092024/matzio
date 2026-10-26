@@ -1,11 +1,11 @@
-import { BrowserWindow } from 'electron'
+import { BaseWindow, BrowserWindow } from 'electron'
 import { join } from 'path'
 
 /**
  * The window id mpv's --wid draws into. HWNDs (Windows) and X11 window ids both
  * fit in the low 32 bits of the handle Electron hands back.
  */
-export function nativeWindowId(win: BrowserWindow): number | null {
+export function nativeWindowId(win: BaseWindow): number | null {
   try {
     const buf = win.getNativeWindowHandle()
     return buf.length >= 4 ? buf.readUInt32LE(0) : null
@@ -15,17 +15,20 @@ export function nativeWindowId(win: BrowserWindow): number | null {
 }
 
 /**
- * The player controls. mpv paints a child window on top of the Matzio window, and nothing
- * drawn by the web page can sit above that, so the controls live in their own transparent
- * window that is pinned over the app window and owned by it.
+ * The built-in player's two windows, stacked over the app window and pinned to it:
+ *
+ * - video: a plain native window with no web page, which mpv draws into. mpv can't draw into
+ *   the app window itself, because on Windows Chromium's own surface covers mpv's picture.
+ * - controls: a transparent page with Matzio's controls. It is owned by the video window,
+ *   and Windows always keeps an owned window above its owner.
  */
-export class ControlsOverlay {
-  private win: BrowserWindow | null = null
-  private syncing = false
+export class PlayerSurface {
+  private video: BaseWindow | null = null
+  private controls: BrowserWindow | null = null
 
   constructor(
     private parent: BrowserWindow,
-    /** Alt+F4 or anything else that closes the overlay should stop playback too. */
+    /** Alt+F4 or anything else that closes a player window should stop playback too. */
     private onClosed: () => void
   ) {
     const sync = () => this.syncBounds()
@@ -36,22 +39,58 @@ export class ControlsOverlay {
     parent.on('restore', sync)
     parent.on('enter-full-screen', sync)
     parent.on('leave-full-screen', sync)
-    parent.on('minimize', () => this.win?.hide())
-    parent.on('restore', () => this.win?.show())
+    parent.on('minimize', () => {
+      this.controls?.hide()
+      this.video?.hide()
+    })
+    parent.on('restore', () => {
+      this.video?.showInactive()
+      this.controls?.show()
+    })
   }
 
-  isOpen() {
-    return !!this.win && !this.win.isDestroyed()
+  /** Puts a black video window over the app and returns the id mpv should draw into. */
+  prepare(): number | null {
+    if (!this.video || this.video.isDestroyed()) {
+      const video = new BaseWindow({
+        parent: this.parent,
+        ...this.parent.getContentBounds(),
+        show: false,
+        frame: false,
+        backgroundColor: '#000000',
+        hasShadow: false,
+        resizable: false,
+        movable: false,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        focusable: false,
+        skipTaskbar: true,
+        title: 'Matzio video'
+      })
+      video.on('closed', () => {
+        const wasOpen = this.video === video
+        this.video = null
+        if (wasOpen) this.onClosed()
+      })
+      this.video = video
+    }
+    this.syncBounds()
+    this.video.showInactive()
+    return nativeWindowId(this.video)
   }
 
+  /** Shows the controls over the video. */
   open() {
-    if (this.isOpen()) {
+    const video = this.video
+    if (!video || video.isDestroyed()) return
+    if (this.controls && !this.controls.isDestroyed()) {
       this.syncBounds()
-      this.win!.focus()
+      this.controls.focus()
       return
     }
     const win = new BrowserWindow({
-      parent: this.parent,
+      parent: video,
       ...this.parent.getContentBounds(),
       show: false,
       frame: false,
@@ -72,7 +111,7 @@ export class ControlsOverlay {
         backgroundThrottling: false
       }
     })
-    this.win = win
+    this.controls = win
 
     win.once('ready-to-show', () => {
       if (win.isDestroyed()) return
@@ -81,8 +120,8 @@ export class ControlsOverlay {
       win.focus()
     })
     win.on('closed', () => {
-      const wasOpen = this.win === win
-      this.win = null
+      const wasOpen = this.controls === win
+      this.controls = null
       if (wasOpen) this.onClosed()
     })
 
@@ -94,21 +133,19 @@ export class ControlsOverlay {
   }
 
   close() {
-    const win = this.win
-    if (!win) return
-    this.win = null
-    if (!win.isDestroyed()) win.destroy()
-    if (!this.parent.isDestroyed()) this.parent.focus()
+    const { controls, video } = this
+    this.controls = null
+    this.video = null
+    if (controls && !controls.isDestroyed()) controls.destroy()
+    if (video && !video.isDestroyed()) video.destroy()
+    if ((controls || video) && !this.parent.isDestroyed()) this.parent.focus()
   }
 
   private syncBounds() {
-    const win = this.win
-    if (!win || win.isDestroyed() || this.parent.isDestroyed() || this.syncing) return
-    this.syncing = true
-    try {
-      win.setBounds(this.parent.getContentBounds())
-    } finally {
-      this.syncing = false
+    if (this.parent.isDestroyed()) return
+    const bounds = this.parent.getContentBounds()
+    for (const win of [this.video, this.controls]) {
+      if (win && !win.isDestroyed()) win.setBounds(bounds)
     }
   }
 }

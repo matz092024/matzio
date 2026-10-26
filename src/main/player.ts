@@ -184,11 +184,13 @@ export class Player {
       return { ok: false, error: 'mpv-missing' }
     }
 
+    // Stop what's playing first: that closes its player windows, which must not take the new ones with them.
+    this.stop()
+
     const wid = req.embed ? this.hooks.embedTarget() : null
     const embedded = wid !== null
     if (req.embed && !embedded) log('warn', 'mpv', 'Built-in player asked for, but the window handle was unavailable; using a separate window')
 
-    this.stop()
     this.progress = { key: req.key, position: req.start ?? 0, duration: 0 }
 
     const ipcPath = isWindows

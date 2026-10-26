@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { detectMpv, Player, type PlayRequest, type PlayerState } from './player'
-import { ControlsOverlay, nativeWindowId } from './overlay'
+import { PlayerSurface } from './overlay'
 import { Trakt, type WatchedItem } from './trakt'
 import { registerUpdater } from './updater'
 import { registerStore } from './store'
@@ -12,9 +12,9 @@ app.setPath('userData', join(app.getPath('appData'), 'Matzio'))
 registerDevLog()
 registerStore()
 
-/** The app window. mpv draws into it, and the player controls sit in an overlay above it. */
+/** The app window. The built-in player's video and controls windows sit pinned above it. */
 let mainWindow: BrowserWindow | null = null
-let overlay: ControlsOverlay | null = null
+let surface: PlayerSurface | null = null
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -62,12 +62,12 @@ function createWindow(): BrowserWindow {
   win.on('closed', () => {
     if (mainWindow === win) {
       mainWindow = null
-      overlay = null
+      surface = null
     }
   })
 
   mainWindow = win
-  overlay = new ControlsOverlay(win, () => player.stop())
+  surface = new PlayerSurface(win, () => player.stop())
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url).catch(() => {})
@@ -122,17 +122,22 @@ const player: Player = new Player({
   onEnded: (p) => onEnded(p),
   onState: (s: PlayerState) => {
     broadcast('player:state', s)
-    if (s.active && s.embedded) overlay?.open()
-    else if (!s.active) overlay?.close()
+    if (s.active && s.embedded) surface?.open()
+    else if (!s.active) surface?.close()
   },
-  embedTarget: () => (mainWindow && !mainWindow.isDestroyed() ? nativeWindowId(mainWindow) : null)
+  embedTarget: () => surface?.prepare() ?? null
 })
 
 ipcMain.handle('player:play', (_e, req: PlayRequest) => {
   try {
+    // Whatever was starting before is being replaced on purpose, so don't retry it.
+    embedAttempt = null
     const result = player.play(req)
     embedAttempt = result.ok && result.embedded ? { req, startedAt: Date.now() } : null
-    if (!result.ok) log('error', 'player', 'Play request failed', result.error)
+    if (!result.ok) {
+      surface?.close()
+      log('error', 'player', 'Play request failed', result.error)
+    }
     return result
   } catch (e) {
     log('error', 'player', 'Play request threw', e)
