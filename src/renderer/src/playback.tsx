@@ -70,7 +70,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       if (p.error) setStatus({ kind: 'error', text: `mpv couldn’t start: ${p.error}`, settingsLink: true })
     })
     // e.g. the built-in player couldn't draw into the window, so mpv opened on its own.
-    const offNotice = player.onNotice((text) => setStatus({ kind: 'playing', text }))
+    const offNotice = player.onNotice((text) => setStatus({ kind: 'error', text }))
     return () => {
       offEnded()
       offNotice()
