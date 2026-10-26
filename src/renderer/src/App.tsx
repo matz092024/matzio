@@ -7,9 +7,11 @@ import Library from './pages/Library'
 import Settings from './pages/Settings'
 import Detail from './pages/Detail'
 import { useShortcuts } from './shortcuts'
+import { useTraktSync } from './trakt'
 
 export default function App() {
   useShortcuts()
+  useTraktSync()
   return (
     <div className="app">
       <div className="backdrop" aria-hidden />

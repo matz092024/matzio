@@ -1,11 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { detectMpv, Player, type PlayRequest } from './player'
-import { registerStore } from './store'
-
-// Pin the data folder to %APPDATA%\Matzio so dev runs, installs and updates all share it.
-app.setPath('userData', join(app.getPath('appData'), 'Matzio'))
-registerStore()
+import { Trakt, type WatchedItem } from './trakt'
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -83,7 +79,33 @@ ipcMain.handle('player:browse', async (e) => {
   return result.canceled ? null : result.filePaths[0] ?? null
 })
 
+let trakt: Trakt
+
+ipcMain.handle('trakt:status', () => trakt.status())
+ipcMain.handle('trakt:set-app', (_e, clientId: string, clientSecret: string) => trakt.setApp(clientId, clientSecret))
+ipcMain.handle('trakt:login', async () => {
+  try {
+    const code = await trakt.startLogin()
+    // Saves a step on trakt.tv: the code is ready to paste and the activation page is open.
+    clipboard.writeText(code.userCode)
+    shell.openExternal(code.verificationUrl).catch(() => {})
+    return { ok: true as const, ...code }
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : 'Couldn’t reach Trakt.' }
+  }
+})
+ipcMain.handle('trakt:cancel-login', () => trakt.cancelLogin())
+ipcMain.handle('trakt:disconnect', () => trakt.disconnect())
+ipcMain.handle('trakt:watched', (_e, item: WatchedItem) => trakt.markWatched(item))
+
 app.whenReady().then(() => {
+  trakt = new Trakt(
+    (e) => broadcast('trakt:login-result', e),
+    (s) => broadcast('trakt:status', s)
+  )
+  // Anything finished while offline goes out at start-up and then every 15 minutes.
+  trakt.flush()
+  setInterval(() => trakt.flush(), 15 * 60 * 1000)
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

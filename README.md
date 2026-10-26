@@ -22,9 +22,14 @@ npm rebuild electron esbuild
 
 Video plays in [mpv](https://mpv.io). Matzio looks for it in this order: the path in Settings → Player, `resources/mpv` (from `npm run fetch-mpv`), your `PATH`, then common install folders. If it isn't found, click **Browse…** in Settings and select `mpv.exe` from the folder you unzipped.
 
-## Your data
+## Trakt
 
-Installed addons, settings, library and Continue Watching are saved as JSON files in `%APPDATA%\Matzio\data`. Installing a newer version upgrades the app in place and leaves that folder alone, and uninstalling keeps it too. Data from older builds (which kept it in browser storage) is moved there automatically the first time a new build opens.
+Settings → Trakt links your [Trakt.tv](https://trakt.tv) account. Once connected, every movie or episode you finish (90% watched, the same mark Continue watching uses) is added to your Trakt history. Titles finished while offline are sent later.
+
+1. Create an API app at [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications/new). Any name works; set the redirect URI to `urn:ietf:wg:oauth:2.0:oob`.
+2. Paste its Client ID and Client Secret into Settings → Trakt, then click **Connect Trakt** and approve the code on trakt.tv.
+
+The keys and sign-in are kept on your computer (encrypted with Windows' DPAPI), never in this repo. To build the keys into the installer instead, add `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` as repository secrets (Settings → Secrets and variables → Actions); the Windows build passes them in as `MAIN_VITE_TRAKT_CLIENT_ID` and `MAIN_VITE_TRAKT_CLIENT_SECRET`, and Settings then skips the keys step. Locally, the same two variables in a `.env.local` file do this.
 
 ## Roadmap
 
@@ -32,3 +37,4 @@ Installed addons, settings, library and Continue Watching are saved as JSON file
 2. Stremio addons: install by URL, catalogs, title details
 3. Playback with mpv, stream picker, one-click Play (first stream)
 4. Continue Watching, keyboard shortcuts, installer polish
+5. Trakt.tv watch history sync

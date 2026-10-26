@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useSettings, type Settings as S } from '../settings'
 import AddonsSettings from '../components/AddonsSettings'
 import PlayerSetting from '../components/PlayerSetting'
+import TraktSettings from '../components/TraktSettings'
 import { shortcutList } from '../shortcuts'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -54,6 +55,8 @@ export default function Settings() {
         </Item>
         <PlayerSetting />
       </section>
+
+      <TraktSettings />
 
       <section className="settings-group glass">
         <h2 className="settings-heading">Appearance</h2>

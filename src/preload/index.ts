@@ -15,6 +15,25 @@ export interface PlayerProgress {
   duration: number
 }
 
+export interface TraktStatus {
+  configured: boolean
+  builtIn: boolean
+  username: string | null
+  pending: number
+}
+
+export interface TraktWatchedItem {
+  type: 'movie' | 'series'
+  id: string
+  season?: number
+  episode?: number
+  watchedAt: string
+}
+
+export type TraktLoginEvent =
+  | { state: 'connected'; username: string | null }
+  | { state: 'expired' | 'denied' | 'error'; message: string }
+
 function subscribe<T>(channel: string, cb: (value: T) => void) {
   const listener = (_: unknown, value: T) => cb(value)
   ipcRenderer.on(channel, listener)
@@ -37,6 +56,17 @@ const api = {
     browse: (): Promise<string | null> => ipcRenderer.invoke('player:browse'),
     onProgress: (cb: (p: PlayerProgress) => void) => subscribe('player:progress', cb),
     onEnded: (cb: (p: PlayerProgress & { error?: string }) => void) => subscribe('player:ended', cb)
+  },
+  trakt: {
+    status: (): Promise<TraktStatus> => ipcRenderer.invoke('trakt:status'),
+    setApp: (clientId: string, clientSecret: string): Promise<TraktStatus> => ipcRenderer.invoke('trakt:set-app', clientId, clientSecret),
+    login: (): Promise<{ ok: true; userCode: string; verificationUrl: string; expiresIn: number } | { ok: false; error: string }> =>
+      ipcRenderer.invoke('trakt:login'),
+    cancelLogin: (): Promise<void> => ipcRenderer.invoke('trakt:cancel-login'),
+    disconnect: (): Promise<TraktStatus> => ipcRenderer.invoke('trakt:disconnect'),
+    markWatched: (item: TraktWatchedItem): Promise<void> => ipcRenderer.invoke('trakt:watched', item),
+    onStatus: (cb: (s: TraktStatus) => void) => subscribe('trakt:status', cb),
+    onLoginResult: (cb: (e: TraktLoginEvent) => void) => subscribe('trakt:login-result', cb)
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
