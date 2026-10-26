@@ -94,7 +94,7 @@ export default function Detail() {
   const library = useLibrary()
   const progress = useProgress()
   const { play } = usePlayback()
-  const state = useAsync(`meta|${type}|${id}|${addons.map((a) => a.transportUrl).join(',')}`, () => fetchMeta(addons, type, id))
+  const state = useAsync(`meta|${type}|${id}|${addons.map((a) => a.transportUrl).join(',')}`, () => fetchMeta(addons, type, id), true)
 
   if (state.status === 'loading') {
     return <div className="page"><section className="detail-hero skeleton glass" /></div>

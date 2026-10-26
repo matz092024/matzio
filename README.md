@@ -27,9 +27,9 @@ Video plays in [mpv](https://mpv.io). Matzio looks for it in this order: the pat
 Settings → Trakt links your [Trakt.tv](https://trakt.tv) account. Once connected, every movie or episode you finish (90% watched, the same mark Continue watching uses) is added to your Trakt history. Titles finished while offline are sent later.
 
 1. Create an API app at [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications/new). Any name works; set the redirect URI to `urn:ietf:wg:oauth:2.0:oob`.
-2. Paste its Client ID and Client Secret into Settings → Trakt, then click **Connect Trakt** and approve the code on trakt.tv.
+2. Paste its Client ID into Settings → Trakt. Apps made since October 2026 have no Client Secret (Trakt shows "Not issued… PKCE"), so leave that field empty; older apps can still paste theirs. Then click **Connect Trakt** and approve the code on trakt.tv.
 
-The keys and sign-in are kept on your computer (encrypted with Windows' DPAPI), never in this repo. To build the keys into the installer instead, add `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` as repository secrets (Settings → Secrets and variables → Actions); the Windows build passes them in as `MAIN_VITE_TRAKT_CLIENT_ID` and `MAIN_VITE_TRAKT_CLIENT_SECRET`, and Settings then skips the keys step. Locally, the same two variables in a `.env.local` file do this.
+The keys and sign-in are kept on your computer (encrypted with Windows' DPAPI), never in this repo. To build the keys into the installer instead, add `TRAKT_CLIENT_ID` (and `TRAKT_CLIENT_SECRET`, only if your app has one) as repository secrets (Settings → Secrets and variables → Actions); the Windows build passes them in as `MAIN_VITE_TRAKT_CLIENT_ID` and `MAIN_VITE_TRAKT_CLIENT_SECRET`, and Settings then skips the keys step. Locally, the same two variables in a `.env.local` file do this.
 
 ## Roadmap
 

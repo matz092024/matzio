@@ -13,16 +13,7 @@ export function catalogTitle(catalog: ManifestCatalog) {
 export function useCatalog(addon: InstalledAddon | undefined, catalog: ManifestCatalog | undefined, extra: Record<string, string | number | undefined> = {}) {
   const extraKey = JSON.stringify(extra)
   const key = addon && catalog ? `catalog|${addon.transportUrl}|${catalog.type}|${catalog.id}|${extraKey}` : null
-  // Last launch's results show instantly; the fresh ones replace them when they arrive.
-  return useAsync(
-    key,
-    () =>
-      fetchCatalog(addon!, catalog!, extra).then((metas) => {
-        rememberCatalog(key!, metas)
-        return metas
-      }),
-    key ? cachedCatalog<MetaPreview[]>(key) : undefined
-  )
+  return useAsync(key, () => fetchCatalog(addon!, catalog!, extra), true)
 }
 
 export default function CatalogRow({ addon, catalog }: { addon: InstalledAddon; catalog: ManifestCatalog }) {

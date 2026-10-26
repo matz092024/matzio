@@ -1,11 +1,15 @@
 import { app, safeStorage } from 'electron'
+import { createHash, randomBytes } from 'crypto'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 /**
  * Trakt.tv sync. Sign-in uses Trakt's device-code flow (you approve Matzio on trakt.tv, no password
  * ever reaches the app), and finished movies and episodes are added to your Trakt history.
- * Everything runs here in the main process so the client secret and tokens never reach the page.
+ * Everything runs here in the main process so the app keys and tokens never reach the page.
+ *
+ * Trakt apps made since October 2026 sign in with PKCE and have no client secret, so the secret is
+ * optional: it's sent only when one was entered, and every sign-in carries a PKCE challenge.
  */
 
 const API = process.env.TRAKT_API_URL || 'https://api.trakt.tv'
@@ -28,7 +32,7 @@ export interface WatchedItem {
 }
 
 export interface TraktStatus {
-  /** A Trakt API app (client id and secret) is available. */
+  /** A Trakt API app (at least a client id) is available. */
   configured: boolean
   /** The keys came with this build, so Settings doesn't need to ask for them. */
   builtIn: boolean
@@ -102,15 +106,19 @@ export class Trakt {
   constructor(private onLogin: (e: LoginEvent) => void, private onChange: (s: TraktStatus) => void) {}
 
   private get app() {
-    return BUILT_IN.clientId && BUILT_IN.clientSecret
-      ? BUILT_IN
-      : { clientId: this.data.clientId ?? '', clientSecret: this.data.clientSecret ?? '' }
+    return BUILT_IN.clientId ? BUILT_IN : { clientId: this.data.clientId ?? '', clientSecret: this.data.clientSecret ?? '' }
+  }
+
+  /** The app's client id, plus its secret when it has one (older Trakt apps). */
+  private credentials() {
+    const { clientId, clientSecret } = this.app
+    return clientSecret ? { client_id: clientId, client_secret: clientSecret } : { client_id: clientId }
   }
 
   status(): TraktStatus {
     return {
-      configured: !!(this.app.clientId && this.app.clientSecret),
-      builtIn: !!(BUILT_IN.clientId && BUILT_IN.clientSecret),
+      configured: !!this.app.clientId,
+      builtIn: !!BUILT_IN.clientId,
       username: this.data.tokens ? (this.data.username ?? '') : null,
       pending: this.data.pending?.length ?? 0
     }
@@ -151,11 +159,12 @@ export class Trakt {
   /** Starts sign-in. Show the code to the user; the result arrives through onLogin. */
   async startLogin(): Promise<{ userCode: string; verificationUrl: string; expiresIn: number }> {
     this.cancelLogin()
-    const { clientId, clientSecret } = this.app
-    if (!clientId || !clientSecret) throw new Error('Add your Trakt app’s Client ID and Secret first.')
+    if (!this.app.clientId) throw new Error('Add your Trakt app’s Client ID first.')
+    const verifier = randomBytes(32).toString('base64url')
+    const challenge = createHash('sha256').update(verifier).digest('base64url')
     const { status, data } = await this.request<{ device_code: string; user_code: string; verification_url: string; expires_in: number; interval: number }>(
       '/oauth/device/code',
-      { client_id: clientId }
+      { client_id: this.app.clientId, code_challenge: challenge, code_challenge_method: 'S256' }
     )
     if (status !== 200 || !data?.device_code) {
       throw new Error(status === 401 || status === 403 ? 'Trakt didn’t accept the Client ID. Check it in Settings.' : `Trakt sign-in failed (HTTP ${status}).`)
@@ -167,7 +176,7 @@ export class Trakt {
       if (!this.login) return
       if (Date.now() > deadline) return this.finishLogin({ state: 'expired', message: 'The code expired. Try connecting again.' })
       try {
-        const r = await this.request<Tokens>('/oauth/device/token', { code: data.device_code, client_id: clientId, client_secret: clientSecret })
+        const r = await this.request<Tokens>('/oauth/device/token', { code: data.device_code, code_verifier: verifier, ...this.credentials() })
         if (!this.login) return
         if (r.status === 200 && r.data?.access_token) {
           this.finishLogin(null)
@@ -180,7 +189,7 @@ export class Trakt {
         }
         if (r.status === 418) return this.finishLogin({ state: 'denied', message: 'Access was denied on trakt.tv.' })
         if (r.status === 404 || r.status === 409 || r.status === 410) return this.finishLogin({ state: 'expired', message: 'The code expired. Try connecting again.' })
-        if (r.status === 401 || r.status === 403) return this.finishLogin({ state: 'error', message: 'Trakt didn’t accept the Client Secret. Check it in Settings.' })
+        if (r.status === 401 || r.status === 403) return this.finishLogin({ state: 'error', message: 'Trakt didn’t accept the app keys. Check them in Settings.' })
         if (r.status === 429) interval += 1000
         // 400 means still waiting for you to approve.
       } catch {
@@ -216,9 +225,8 @@ export class Trakt {
     const token = this.data.tokens?.access_token
     this.update({ tokens: undefined, username: undefined, pending: [] })
     if (token) {
-      const { clientId, clientSecret } = this.app
       // Best effort: the app forgets the token either way.
-      await this.request('/oauth/revoke', { token, client_id: clientId, client_secret: clientSecret }).catch(() => {})
+      await this.request('/oauth/revoke', { token, ...this.credentials() }).catch(() => {})
     }
     return this.status()
   }
@@ -226,11 +234,9 @@ export class Trakt {
   private async refresh(): Promise<boolean> {
     const tokens = this.data.tokens
     if (!tokens) return false
-    const { clientId, clientSecret } = this.app
     const r = await this.request<Tokens>('/oauth/token', {
       refresh_token: tokens.refresh_token,
-      client_id: clientId,
-      client_secret: clientSecret,
+      ...this.credentials(),
       redirect_uri: REDIRECT_URI,
       grant_type: 'refresh_token'
     })
