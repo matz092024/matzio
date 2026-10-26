@@ -17,8 +17,9 @@ export function nativeWindowId(win: BaseWindow): number | null {
 /**
  * The built-in player's two windows, stacked over the app window and pinned to it:
  *
- * - video: a plain native window with no web page, which mpv draws into. mpv can't draw into
- *   the app window itself, because on Windows Chromium's own surface covers mpv's picture.
+ * - video: a clear native window with no web page, which mpv draws into. On Windows Chromium
+ *   draws a window's own content above its child windows, so mpv can't draw into the app
+ *   window, and this one has to stay transparent for mpv's child window to show.
  * - controls: a transparent page with Matzio's controls. It is owned by the video window,
  *   and Windows always keeps an owned window above its owner.
  */
@@ -49,7 +50,7 @@ export class PlayerSurface {
     })
   }
 
-  /** Puts a black video window over the app and returns the id mpv should draw into. */
+  /** Puts the video window over the app and returns the id mpv should draw into. */
   prepare(): number | null {
     if (!this.video || this.video.isDestroyed()) {
       const video = new BaseWindow({
@@ -57,7 +58,10 @@ export class PlayerSurface {
         ...this.parent.getContentBounds(),
         show: false,
         frame: false,
-        backgroundColor: '#000000',
+        // Chromium composites a window's own surface above its child windows, so an opaque
+        // background here would cover mpv's picture. Left clear, only mpv's child shows.
+        transparent: true,
+        backgroundColor: '#00000000',
         hasShadow: false,
         resizable: false,
         movable: false,
