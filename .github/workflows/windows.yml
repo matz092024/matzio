@@ -21,6 +21,10 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run dist:win
+        env:
+          # Optional: builds your Trakt app keys into the installer (see README). Empty means Settings asks for them.
+          MAIN_VITE_TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          MAIN_VITE_TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
       - uses: actions/upload-artifact@v4
         with:
           name: Matzio-Setup
