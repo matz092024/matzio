@@ -1,14 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { TraktStatus } from '../../../preload'
+import { pullTraktNow } from '../trakt'
 
 type Login = { userCode: string; verificationUrl: string }
 
-/** Connect a Trakt.tv account so finished movies and episodes show up in your Trakt history. */
+/** Connect a Trakt.tv account to share your watch history and where you are in each title both ways. */
 export default function TraktSettings() {
   const api = window.matzio
   const [status, setStatus] = useState<TraktStatus | undefined>(undefined)
   const [login, setLogin] = useState<Login | null>(null)
   const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [message, setMessage] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
   const [editKeys, setEditKeys] = useState(false)
   const [clientId, setClientId] = useState('')
@@ -21,7 +23,11 @@ export default function TraktSettings() {
     const offStatus = api.trakt.onStatus(setStatus)
     const offLogin = api.trakt.onLoginResult((e) => {
       setLogin(null)
-      setMessage(e.state === 'connected' ? { kind: 'ok', text: 'Connected. Movies and episodes you finish will be added to your Trakt history.' } : { kind: 'error', text: e.message })
+      setMessage(
+        e.state === 'connected'
+          ? { kind: 'ok', text: 'Connected. Your Trakt history is coming over now, and what you watch here goes back to Trakt.' }
+          : { kind: 'error', text: e.message }
+      )
     })
     return () => {
       active = false
@@ -47,6 +53,14 @@ export default function TraktSettings() {
     setLogin(null)
   }
 
+  const syncNow = async () => {
+    setSyncing(true)
+    setMessage(null)
+    const error = await pullTraktNow()
+    setSyncing(false)
+    setMessage(error ? { kind: 'error', text: error } : { kind: 'ok', text: 'Up to date with Trakt.' })
+  }
+
   const disconnect = async () => {
     setMessage(null)
     setStatus(await api!.trakt.disconnect())
@@ -70,8 +84,9 @@ export default function TraktSettings() {
         <div>
           <div className="setting-label">Watch history</div>
           <div className="setting-hint">
-            Link your <a href="https://trakt.tv" target="_blank" rel="noreferrer">Trakt.tv</a> account and every movie or episode you finish is marked as
-            watched there. You approve Matzio on trakt.tv, so your password never goes into the app.
+            Link your <a href="https://trakt.tv" target="_blank" rel="noreferrer">Trakt.tv</a> account to bring in what you’ve already watched and
+            where you stopped, mark what you finish here as watched there, and keep your place in sync while you watch. You approve Matzio on
+            trakt.tv, so your password never goes into the app.
           </div>
           <div className="player-status">
             {!api ? (
@@ -82,6 +97,7 @@ export default function TraktSettings() {
               <span className="ok">
                 Connected{status.username ? ` as ${status.username}` : ''}
                 {status.pending > 0 && ` · ${status.pending} waiting to sync`}
+                {status.pulledAt && ` · history synced ${new Date(status.pulledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`}
               </span>
             ) : !status.configured ? (
               <span>Not set up yet.</span>
@@ -133,7 +149,10 @@ export default function TraktSettings() {
         {status?.configured && !editKeys && !login && (
           <div className="trakt-actions">
             {status.username !== null ? (
-              <button className="btn btn-glass" onClick={disconnect}>Disconnect</button>
+              <>
+                <button className="btn btn-glass" disabled={syncing} onClick={syncNow}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+                <button className="btn btn-glass" onClick={disconnect}>Disconnect</button>
+              </>
             ) : (
               <button className="btn btn-primary" disabled={busy} onClick={connect}>{busy ? 'Contacting Trakt…' : 'Connect Trakt'}</button>
             )}

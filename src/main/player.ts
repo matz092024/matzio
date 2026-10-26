@@ -13,6 +13,8 @@ export interface PlayRequest {
   title: string
   /** Seconds to resume from. */
   start?: number
+  /** Percent to resume from, used when only Trakt's percentage is known. */
+  startPercent?: number
   /** Extra HTTP headers some addons require (behaviorHints.proxyHeaders.request). */
   headers?: Record<string, string>
   /** Path the user set in Settings; empty means auto-detect. */
@@ -157,6 +159,8 @@ export class Player {
   /** When the current mpv was started, for the dev log's time-to-first-frame. */
   private launchedAt = 0
   private firstFrameLogged = false
+  /** How often the position is reported for saving, in ms (Settings → Save progress every). */
+  private progressEvery = 5000
 
   constructor(
     private hooks: {
@@ -220,6 +224,8 @@ export class Player {
       args.push('--fullscreen', '--osd-bar=yes', '--osd-font-size=32', '--osd-color=#DDDDDD', '--osd-border-size=1')
     }
     if (req.start && req.start > 5) args.push(`--start=${Math.floor(req.start)}`)
+    // A resume point from Trakt is a percentage, since the stream's exact length isn't known before it opens.
+    else if (req.startPercent && req.startPercent > 0 && req.startPercent < 100) args.push(`--start=${req.startPercent.toFixed(2)}%`)
     const headers = Object.entries(req.headers ?? {})
     if (headers.length) {
       // mpv splits this list on commas, so escape any inside values.
@@ -307,6 +313,10 @@ export class Player {
 
     this.connect(ipcPath, proc)
     return { ok: true, embedded }
+  }
+
+  setProgressInterval(seconds: number) {
+    if (Number.isFinite(seconds)) this.progressEvery = Math.min(300, Math.max(1, seconds)) * 1000
   }
 
   stop() {
@@ -445,7 +455,7 @@ export class Player {
           lastUi = now
           this.hooks.onState(this.getState())
         }
-        if (now - lastSaved > 5000) {
+        if (now - lastSaved >= this.progressEvery) {
           lastSaved = now
           this.hooks.onProgress({ ...this.progress })
         }

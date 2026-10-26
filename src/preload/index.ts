@@ -5,6 +5,7 @@ export interface PlayRequest {
   url: string
   title: string
   start?: number
+  startPercent?: number
   headers?: Record<string, string>
   mpvPath?: string
   /** Draw inside the Matzio window instead of mpv's own window. */
@@ -43,6 +44,7 @@ export interface TraktStatus {
   builtIn: boolean
   username: string | null
   pending: number
+  pulledAt: string | null
 }
 
 export interface TraktWatchedItem {
@@ -51,6 +53,29 @@ export interface TraktWatchedItem {
   season?: number
   episode?: number
   watchedAt: string
+}
+
+export interface TraktProgressItem {
+  type: 'movie' | 'series'
+  id: string
+  season?: number
+  episode?: number
+  progress: number
+}
+
+export interface TraktImportedEntry {
+  videoId: string
+  metaId: string
+  type: 'movie' | 'series'
+  name: string
+  poster?: string
+  background?: string
+  season?: number
+  episode?: number
+  episodeTitle?: string
+  fraction: number
+  runtime: number
+  updatedAt: number
 }
 
 export type TraktLoginEvent =
@@ -94,6 +119,8 @@ const api = {
     setVolume: (volume: number) => ipcRenderer.send('player:volume', volume),
     setMuted: (muted: boolean) => ipcRenderer.send('player:muted', muted),
     setTrack: (kind: 'audio' | 'sub', id: number) => ipcRenderer.send('player:track', kind, id),
+    /** How often the position is reported (and saved), in seconds. */
+    setProgressInterval: (seconds: number) => ipcRenderer.send('player:progress-interval', seconds),
     onState: (cb: (s: PlayerState) => void) => subscribe('player:state', cb),
     onNotice: (cb: (text: string) => void) => subscribe('player:notice', cb),
     detect: (customPath?: string): Promise<{ path: string | null; customOk: boolean | null }> => ipcRenderer.invoke('player:detect', customPath),
@@ -109,6 +136,9 @@ const api = {
     cancelLogin: (): Promise<void> => ipcRenderer.invoke('trakt:cancel-login'),
     disconnect: (): Promise<TraktStatus> => ipcRenderer.invoke('trakt:disconnect'),
     markWatched: (item: TraktWatchedItem): Promise<void> => ipcRenderer.invoke('trakt:watched', item),
+    saveProgress: (item: TraktProgressItem) => ipcRenderer.send('trakt:progress', item),
+    /** Your Trakt history and resume points; entries is null when nothing changed since the last pull. */
+    pull: (force?: boolean): Promise<{ ok: true; entries: TraktImportedEntry[] | null } | { ok: false; error: string }> => ipcRenderer.invoke('trakt:pull', force),
     onStatus: (cb: (s: TraktStatus) => void) => subscribe('trakt:status', cb),
     onLoginResult: (cb: (e: TraktLoginEvent) => void) => subscribe('trakt:login-result', cb)
   },

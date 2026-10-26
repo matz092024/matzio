@@ -56,6 +56,22 @@ export default function Settings() {
           />
         </Item>
         <PlayerSetting />
+        <Item label="Save progress every" hint="How often your place in a movie or episode is saved, here and to Trakt when it’s connected.">
+          <div className="interval-slider">
+            <input
+              className="pl-range"
+              type="range"
+              min={5}
+              max={60}
+              step={5}
+              value={settings.progressInterval}
+              aria-label="Save progress every"
+              onChange={(e) => update({ progressInterval: Number(e.target.value) })}
+              style={{ ['--pl-progress' as string]: `${((settings.progressInterval - 5) / 55) * 100}%` }}
+            />
+            <span className="interval-value">{settings.progressInterval} s</span>
+          </div>
+        </Item>
       </section>
 
       <TraktSettings />

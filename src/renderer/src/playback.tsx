@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAddons } from './stremio/addons'
 import { fetchMeta, fetchStreams, isPlayable, type AddonStream } from './stremio/client'
 import type { MetaDetail, MetaPreview, Video } from './stremio/types'
-import { isWatched, useProgress, type WatchEntry } from './progress'
+import { fraction, isWatched, useProgress, type WatchEntry } from './progress'
 import { useSettings } from './settings'
 import StreamPicker from './components/StreamPicker'
 import { devlog } from './devlog'
@@ -95,7 +95,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const { meta, video } = target
     const videoId = video?.id ?? meta.id
     const saved = progress.get(videoId)
-    const startAt = saved && !isWatched(saved) && saved.position > RESUME_MIN_SECONDS ? saved.position : 0
+    const resume = !!saved && !isWatched(saved) && saved.position > RESUME_MIN_SECONDS
+    const startAt = resume && !saved.estimated ? saved.position : 0
+    // A resume point from Trakt is only a percentage of the video, so mpv seeks to that percentage.
+    const startPercent = resume && saved.estimated ? fraction(saved) * 100 : undefined
     const title = video ? `${meta.name} · ${episodeLabel(video)}${video.title ?? video.name ? ` · ${video.title ?? video.name}` : ''}` : meta.name
 
     progress.begin({
@@ -113,7 +116,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     devlog('info', 'playback', `Starting ${title}`, {
       addon: stream.addon,
       stream: stream.name ?? stream.title ?? '',
-      resumeAt: Math.round(startAt),
+      resumeAt: startPercent ? `${startPercent.toFixed(1)}%` : Math.round(startAt),
       mode: settings.playerMode
     })
     const result = await player.play({
@@ -121,6 +124,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       url: stream.url,
       title,
       start: startAt,
+      startPercent,
       headers: stream.behaviorHints?.proxyHeaders?.request,
       mpvPath: settings.mpvPath || undefined,
       embed: settings.playerMode !== 'external'
