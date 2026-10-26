@@ -117,7 +117,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       addon: stream.addon,
       stream: stream.name ?? stream.title ?? '',
       resumeAt: startPercent ? `${startPercent.toFixed(1)}%` : Math.round(startAt),
-      mode: settings.playerMode
+      mode: settings.playerMode,
+      bufferSeconds: settings.bufferSeconds
     })
     const result = await player.play({
       key: videoId,
@@ -127,7 +128,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       startPercent,
       headers: stream.behaviorHints?.proxyHeaders?.request,
       mpvPath: settings.mpvPath || undefined,
-      embed: settings.playerMode !== 'external'
+      embed: settings.playerMode !== 'external',
+      bufferSeconds: settings.bufferSeconds
     })
     if (!result.ok) devlog('error', 'playback', 'Couldn’t start playback', result.error)
     // The embedded player has its own controls on screen, so it needs no toast.

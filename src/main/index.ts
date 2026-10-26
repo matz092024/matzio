@@ -146,6 +146,7 @@ ipcMain.handle('player:play', (_e, req: PlayRequest) => {
 })
 ipcMain.handle('player:stop', () => player.stop())
 ipcMain.handle('player:state', () => player.getState())
+ipcMain.handle('player:stats', () => player.stats())
 ipcMain.on('player:paused', (_e, paused: boolean) => player.setPaused(paused))
 ipcMain.on('player:seek-to', (_e, seconds: number) => player.seekTo(seconds))
 ipcMain.on('player:seek-by', (_e, seconds: number) => player.seekBy(seconds))

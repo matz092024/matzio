@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useSettings, type Settings as S } from '../settings'
 import AddonsSettings from '../components/AddonsSettings'
 import PlayerSetting from '../components/PlayerSetting'
+import BufferSettings from '../components/BufferSettings'
 import TraktSettings from '../components/TraktSettings'
 import UpdateSettings from '../components/UpdateSettings'
 import DevSettings from '../components/DevSettings'
@@ -56,6 +57,7 @@ export default function Settings() {
           />
         </Item>
         <PlayerSetting />
+        <BufferSettings />
         <Item label="Save progress every" hint="How often your place in a movie or episode is saved, here and to Trakt when it’s connected.">
           <div className="interval-slider">
             <input

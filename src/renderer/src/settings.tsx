@@ -16,6 +16,10 @@ export interface Settings {
   mpvPath: string
   /** How often, in seconds, your place in a movie or episode is saved (and sent to Trakt). */
   progressInterval: number
+  /** Most seconds of video mpv buffers ahead of the playhead. */
+  bufferSeconds: number
+  /** Show buffer numbers over the built-in player. */
+  bufferInfo: boolean
   /** Keep a log of errors and playback details to send with bug reports. */
   devMode: boolean
 }
@@ -28,6 +32,8 @@ const defaults: Settings = {
   playerMode: 'integrated',
   mpvPath: '',
   progressInterval: 5,
+  bufferSeconds: 60,
+  bufferInfo: false,
   devMode: false
 }
 

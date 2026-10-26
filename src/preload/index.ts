@@ -10,6 +10,21 @@ export interface PlayRequest {
   mpvPath?: string
   /** Draw inside the Matzio window instead of mpv's own window. */
   embed?: boolean
+  /** Most seconds to buffer ahead. */
+  bufferSeconds?: number
+}
+
+export interface PlayerStats {
+  ahead: number | null
+  limitSeconds: number | null
+  aheadBytes: number | null
+  totalBytes: number | null
+  limitBytes: number | null
+  speed: number | null
+  fill: 'filling' | 'full' | 'complete' | null
+  resumePercent: number | null
+  droppedDecoder: number | null
+  droppedOutput: number | null
 }
 
 export interface PlayerProgress {
@@ -113,6 +128,8 @@ const api = {
     stop: (): Promise<void> => ipcRenderer.invoke('player:stop'),
     /** State of whatever is playing now, for a window that just opened. */
     state: (): Promise<PlayerState> => ipcRenderer.invoke('player:state'),
+    /** Buffer numbers for the info panel; null when nothing is playing. */
+    stats: (): Promise<PlayerStats | null> => ipcRenderer.invoke('player:stats'),
     setPaused: (paused: boolean) => ipcRenderer.send('player:paused', paused),
     seekTo: (seconds: number) => ipcRenderer.send('player:seek-to', seconds),
     seekBy: (seconds: number) => ipcRenderer.send('player:seek-by', seconds),
