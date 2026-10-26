@@ -30,9 +30,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Matzio-Setup
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/latest.yml
           if-no-files-found: error
       # Every build of main becomes a release, so the newest installer is always on the Releases page.
+      # latest.yml beside it is what installed copies of Matzio read to find and verify the update.
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
@@ -43,4 +46,7 @@ jobs:
           body: |
             Windows installer built from ${{ github.sha }}.
             Download **Matzio-Setup.exe** below. Windows may warn because it isn't code-signed: click "More info", then "Run anyway".
-          files: dist/Matzio-Setup.exe
+            Already installed? Matzio updates itself and asks before restarting.
+          files: |
+            dist/Matzio-Setup.exe
+            dist/latest.yml

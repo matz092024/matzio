@@ -34,6 +34,13 @@ export type TraktLoginEvent =
   | { state: 'connected'; username: string | null }
   | { state: 'expired' | 'denied' | 'error'; message: string }
 
+export type UpdateStatus =
+  | { state: 'unsupported' }
+  | { state: 'idle' | 'checking' | 'up-to-date' }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; message: string }
+
 function subscribe<T>(channel: string, cb: (value: T) => void) {
   const listener = (_: unknown, value: T) => cb(value)
   ipcRenderer.on(channel, listener)
@@ -67,6 +74,13 @@ const api = {
     markWatched: (item: TraktWatchedItem): Promise<void> => ipcRenderer.invoke('trakt:watched', item),
     onStatus: (cb: (s: TraktStatus) => void) => subscribe('trakt:status', cb),
     onLoginResult: (cb: (e: TraktLoginEvent) => void) => subscribe('trakt:login-result', cb)
+  },
+  updates: {
+    status: (): Promise<{ version: string; status: UpdateStatus }> => ipcRenderer.invoke('update:status'),
+    check: (): Promise<void> => ipcRenderer.invoke('update:check'),
+    /** Restarts Matzio into the downloaded version. */
+    install: (): Promise<void> => ipcRenderer.invoke('update:install'),
+    onStatus: (cb: (s: UpdateStatus) => void) => subscribe('update:status', cb)
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

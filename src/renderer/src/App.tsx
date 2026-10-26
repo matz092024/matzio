@@ -8,6 +8,7 @@ import Settings from './pages/Settings'
 import Detail from './pages/Detail'
 import { useShortcuts } from './shortcuts'
 import { useTraktSync } from './trakt'
+import { UpdatePrompt } from './updates'
 
 export default function App() {
   useShortcuts()
@@ -29,6 +30,7 @@ export default function App() {
           </Routes>
         </main>
       </div>
+      <UpdatePrompt />
     </div>
   )
 }
