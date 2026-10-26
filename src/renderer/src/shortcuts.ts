@@ -13,6 +13,17 @@ export const shortcutList: [keys: string[], action: string][] = [
   [['Esc'], 'Close the stream list']
 ]
 
+/** Keys the embedded player handles while something is playing. */
+export const playerShortcutList: [keys: string[], action: string][] = [
+  [['Space', 'K'], 'Pause or resume'],
+  [['←', '→'], 'Skip 10 seconds'],
+  [['Shift + ←', 'Shift + →'], 'Skip a minute'],
+  [['↑', '↓'], 'Volume'],
+  [['M'], 'Mute'],
+  [['F'], 'Full screen'],
+  [['Esc', 'Q'], 'Close the player']
+]
+
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)

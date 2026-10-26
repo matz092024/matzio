@@ -3,7 +3,7 @@ import { useSettings, type Settings as S } from '../settings'
 import AddonsSettings from '../components/AddonsSettings'
 import PlayerSetting from '../components/PlayerSetting'
 import TraktSettings from '../components/TraktSettings'
-import { shortcutList } from '../shortcuts'
+import { playerShortcutList, shortcutList } from '../shortcuts'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -87,7 +87,15 @@ export default function Settings() {
             </div>
           ))}
         </dl>
-        <p className="setting-hint">In the player, mpv’s own keys work: Space to pause, ← → to skip, F for full screen, Q to quit.</p>
+        <dl className="shortcuts">
+          {playerShortcutList.map(([keys, action]) => (
+            <div key={action}>
+              <dt>{keys.map((k) => <kbd key={k}>{k}</kbd>)}</dt>
+              <dd>{action}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="setting-hint">The second group works while video is playing in the Matzio window. With the player set to a separate window, mpv’s own keys apply instead.</p>
       </section>
     </div>
   )

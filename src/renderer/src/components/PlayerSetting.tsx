@@ -31,6 +31,8 @@ export default function PlayerSetting() {
     if (picked) save(picked)
   }
 
+  const integrated = settings.playerMode !== 'external'
+
   const pathHelp = isWindows
     ? 'Pick the mpv.exe file inside the folder you unzipped from mpv.io (not a shortcut, the .zip/.7z file, or mpv.com).'
     : 'Pick the mpv program file.'
@@ -38,9 +40,20 @@ export default function PlayerSetting() {
   return (
     <div className="setting setting-stack">
       <div>
-        <div className="setting-label">Player</div>
+        <div className="setting-label">Where video plays</div>
         <div className="setting-hint">
-          Matzio plays video in mpv, which handles the MKV, HEVC and surround audio files debrid services give you.
+          Built in keeps the picture inside the Matzio window with Matzio’s own controls. Separate window hands the stream to mpv
+          and lets mpv’s own keys and controls run it, which is the fallback if the built-in player misbehaves on your machine.
+        </div>
+        <div className="segmented glass" style={{ marginTop: 10 }}>
+          <button className={integrated ? 'active' : ''} onClick={() => update({ playerMode: 'integrated' })}>Built in</button>
+          <button className={!integrated ? 'active' : ''} onClick={() => update({ playerMode: 'external' })}>Separate window</button>
+        </div>
+      </div>
+      <div>
+        <div className="setting-label">mpv</div>
+        <div className="setting-hint">
+          Either way the video is decoded by mpv, which handles the MKV, HEVC and surround audio files debrid services give you.
         </div>
         <div className="player-status">
           {!api ? (
