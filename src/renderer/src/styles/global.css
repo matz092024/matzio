@@ -506,6 +506,28 @@ button.chip:hover { color: var(--text-2); }
 @keyframes spin { to { transform: rotate(360deg); } }
 :root[data-motion='reduce'] .toast { animation: none; }
 
+/* Update ready */
+.update-prompt {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 18px 16px 22px;
+  border-radius: var(--radius-lg);
+  max-width: min(520px, calc(100vw - 48px));
+  background: rgba(30, 30, 33, 0.78);
+  animation: toast-in-right 260ms var(--ease);
+}
+.update-title { font-weight: 600; }
+.update-button { flex: none; white-space: nowrap; }
+.update-actions { display: flex; gap: 8px; flex: none; }
+.update-actions .btn { height: 36px; padding: 0 16px; }
+@keyframes toast-in-right { from { opacity: 0; transform: translateY(8px); } }
+:root[data-motion='reduce'] .update-prompt { animation: none; }
+
 /* Stream picker */
 .sheet-backdrop {
   position: fixed;

@@ -41,7 +41,16 @@
       "artifactName": "Matzio-Setup.${ext}",
       "perMachine": false,
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/matz092024/matzio/releases/latest/download"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "7zip-bin": "^5.2.0",
