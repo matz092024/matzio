@@ -93,6 +93,15 @@ export interface TraktImportedEntry {
   updatedAt: number
 }
 
+export interface TraktWatchlistTitle {
+  id: string
+  type: 'movie' | 'series'
+  name: string
+  poster?: string
+  releaseInfo?: string
+  addedAt: number
+}
+
 export type TraktLoginEvent =
   | { state: 'connected'; username: string | null }
   | { state: 'expired' | 'denied' | 'error'; message: string }
@@ -156,6 +165,14 @@ const api = {
     saveProgress: (item: TraktProgressItem) => ipcRenderer.send('trakt:progress', item),
     /** Your Trakt history and resume points; entries is null when nothing changed since the last pull. */
     pull: (force?: boolean): Promise<{ ok: true; entries: TraktImportedEntry[] | null } | { ok: false; error: string }> => ipcRenderer.invoke('trakt:pull', force),
+    /** Repeats a Watchlist add or removal on your Trakt watchlist (queued while offline). */
+    updateWatchlist: (change: { type: 'movie' | 'series'; id: string; add: boolean }) => ipcRenderer.send('trakt:watchlist', change),
+    /** What to add to and remove from the Watchlist to match Trakt; changes is null when nothing changed since the last pull. */
+    pullWatchlist: (
+      local: { id: string; type: string }[],
+      force?: boolean
+    ): Promise<{ ok: true; changes: { add: TraktWatchlistTitle[]; remove: string[] } | null } | { ok: false; error: string }> =>
+      ipcRenderer.invoke('trakt:pull-watchlist', local, force),
     onStatus: (cb: (s: TraktStatus) => void) => subscribe('trakt:status', cb),
     onLoginResult: (cb: (e: TraktLoginEvent) => void) => subscribe('trakt:login-result', cb)
   },

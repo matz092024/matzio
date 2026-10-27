@@ -5,7 +5,7 @@ import { useSettings } from '../settings'
 const items = [
   { to: '/', label: 'Home', Icon: HomeIcon },
   { to: '/discover', label: 'Discover', Icon: CompassIcon },
-  { to: '/library', label: 'Library', Icon: LibraryIcon }
+  { to: '/library', label: 'Watchlist', Icon: LibraryIcon }
 ]
 
 export default function Sidebar() {

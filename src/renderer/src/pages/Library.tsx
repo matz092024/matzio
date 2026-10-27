@@ -8,11 +8,11 @@ export default function Library() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1 className="page-title">Library</h1>
+        <h1 className="page-title">Watchlist</h1>
       </header>
       {items.length === 0 ? (
         <section className="empty-state glass">
-          <p>Titles you save with the + button show up here.</p>
+          <p>Titles you save with the + button show up here, and on your Trakt watchlist when Trakt is connected.</p>
           <Link to="/discover" className="btn btn-glass">Find something</Link>
         </section>
       ) : (

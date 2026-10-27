@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { detectMpv, Player, type PlayRequest, type PlayerState } from './player'
 import { PlayerSurface } from './overlay'
-import { Trakt, type ProgressItem, type WatchedItem } from './trakt'
+import { Trakt, type ProgressItem, type WatchedItem, type WatchlistChange } from './trakt'
 import { registerUpdater } from './updater'
 import { registerStore } from './store'
 import { log, mark, registerDevLog } from './devlog'
@@ -200,6 +200,15 @@ ipcMain.handle('trakt:pull', async (_e, force?: boolean) => {
     return { ok: false as const, error: e instanceof Error ? e.message : 'Couldn’t reach Trakt.' }
   }
 })
+ipcMain.on('trakt:watchlist', (_e, change: WatchlistChange) => trakt.updateWatchlist(change))
+ipcMain.handle('trakt:pull-watchlist', async (_e, local: { id: string; type: string }[], force?: boolean) => {
+  try {
+    return { ok: true as const, changes: await trakt.pullWatchlist(local, force) }
+  } catch (e) {
+    log('warn', 'trakt', 'Pulling the watchlist failed', e)
+    return { ok: false as const, error: e instanceof Error ? e.message : 'Couldn’t reach Trakt.' }
+  }
+})
 
 app.whenReady().then(() => {
   mark('App ready')
@@ -210,9 +219,11 @@ app.whenReady().then(() => {
   // Anything finished while offline goes out at start-up and then every 15 minutes.
   trakt.flush()
   trakt.saveProgress()
+  trakt.flushWatchlist()
   setInterval(() => {
     trakt.flush()
     trakt.saveProgress()
+    trakt.flushWatchlist()
   }, 15 * 60 * 1000)
   registerUpdater(broadcast)
   createWindow()

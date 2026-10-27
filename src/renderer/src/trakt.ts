@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { isWatched, useProgress, type WatchEntry } from './progress'
+import { useLibrary } from './library'
 import { devlog } from './devlog'
 
 /** How often to check Trakt for titles watched elsewhere. Unchanged history costs a single call. */
@@ -14,7 +15,9 @@ const traktItem = (e: WatchEntry) =>
  * - finished movies and episodes are added to your Trakt history (the same 90% mark as Continue watching);
  * - while something plays, its position goes to Trakt's playback progress each time it's saved here
  *   (Settings → Save progress every), and once more when playback stops;
- * - your Trakt history and resume points are pulled in at start-up, on connecting, and every 15 minutes.
+ * - your Trakt history and resume points are pulled in at start-up, on connecting, and every 15 minutes;
+ * - the Watchlist matches your Trakt watchlist: adding or removing a title here does the same on Trakt
+ *   (see library.tsx), and changes made on Trakt come in with each pull.
  */
 export function useTraktSync() {
   const { entries, importEntries } = useProgress()
@@ -22,6 +25,9 @@ export function useTraktSync() {
   latest.current = entries
   const importRef = useRef(importEntries)
   importRef.current = importEntries
+  const library = useLibrary()
+  const libraryRef = useRef(library)
+  libraryRef.current = library
 
   useEffect(() => {
     const api = window.matzio
@@ -53,7 +59,11 @@ export function useTraktSync() {
       const r = await api.trakt.pull(force)
       if (!r.ok) devlog('warn', 'trakt', 'Couldn’t pull Trakt history', r.error)
       else if (r.entries) importRef.current(r.entries)
-      return r.ok ? null : r.error
+      const local = libraryRef.current.items.map((i) => ({ id: i.id, type: i.type }))
+      const w = await api.trakt.pullWatchlist(local, force)
+      if (!w.ok) devlog('warn', 'trakt', 'Couldn’t sync the watchlist', w.error)
+      else if (w.changes) libraryRef.current.applyRemote(w.changes.add, w.changes.remove)
+      return !r.ok ? r.error : !w.ok ? w.error : null
     }
     api.trakt.status().then((s) => {
       // A status update may have arrived first and started the pull already.

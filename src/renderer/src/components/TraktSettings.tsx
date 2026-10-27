@@ -25,7 +25,7 @@ export default function TraktSettings() {
       setLogin(null)
       setMessage(
         e.state === 'connected'
-          ? { kind: 'ok', text: 'Connected. Your Trakt history is coming over now, and what you watch here goes back to Trakt.' }
+          ? { kind: 'ok', text: 'Connected. Your Trakt history and watchlist are coming over now, and what you watch or save here goes back to Trakt.' }
           : { kind: 'error', text: e.message }
       )
     })
@@ -85,7 +85,8 @@ export default function TraktSettings() {
           <div className="setting-label">Watch history</div>
           <div className="setting-hint">
             Link your <a href="https://trakt.tv" target="_blank" rel="noreferrer">Trakt.tv</a> account to bring in what you’ve already watched and
-            where you stopped, mark what you finish here as watched there, and keep your place in sync while you watch. You approve Matzio on
+            where you stopped, mark what you finish here as watched there, keep your place in sync while you watch, and keep your Watchlist
+            and Trakt watchlist the same. You approve Matzio on
             trakt.tv, so your password never goes into the app.
           </div>
           <div className="player-status">

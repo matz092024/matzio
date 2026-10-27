@@ -164,7 +164,7 @@ export default function Detail() {
             </button>
             <button className="btn btn-glass" onClick={() => library.toggle(meta)}>
               {saved ? <CheckIcon width={16} height={16} /> : <PlusIcon width={16} height={16} />}
-              {saved ? 'In library' : 'Add to library'}
+              {saved ? 'On watchlist' : 'Add to watchlist'}
             </button>
           </div>
         </div>

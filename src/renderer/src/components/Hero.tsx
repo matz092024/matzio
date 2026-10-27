@@ -40,8 +40,8 @@ export default function Hero({ meta, eyebrow }: { meta: MetaPreview; eyebrow: st
           </button>
           <button
             className="btn btn-icon"
-            aria-label={saved ? 'Remove from library' : 'Add to library'}
-            title={saved ? 'In your library' : 'Add to library'}
+            aria-label={saved ? 'Remove from watchlist' : 'Add to watchlist'}
+            title={saved ? 'On your watchlist' : 'Add to watchlist'}
             onClick={() => library.toggle(meta)}
           >
             {saved ? <CheckIcon width={18} height={18} /> : <PlusIcon width={18} height={18} />}
