@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useSettings, type Settings as S } from '../settings'
 import AddonsSettings from '../components/AddonsSettings'
 import PlayerSetting from '../components/PlayerSetting'
@@ -80,6 +81,13 @@ export default function Settings() {
       <TrackSettings />
 
       <TraktSettings />
+
+      <section className="settings-group glass">
+        <h2 className="settings-heading">Connections</h2>
+        <Item label="Artwork services" hint="Add TMDB and fanart.tv keys for sharper logos, banners and backgrounds.">
+          <Link className="btn btn-glass settings-link" to="/settings/connections">Open</Link>
+        </Item>
+      </section>
 
       <section className="settings-group glass">
         <h2 className="settings-heading">Appearance</h2>
