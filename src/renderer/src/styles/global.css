@@ -814,3 +814,69 @@ body.overlay-body { background: transparent; }
 .pl-menu button.active { color: var(--text); background: var(--glass-fill); }
 .pl-menu-empty { padding: 8px 10px; font-size: 12px; color: var(--text-3); }
 .dev-actions { display: flex; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Loading screen while streams are found: outlines first, art fades in as it arrives */
+.loading-screen {
+  position: fixed;
+  /* Below the title bar, so the window can still be moved and closed. */
+  inset: 40px 0 0 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  animation: fade 240ms var(--ease);
+}
+.loading-backdrop {
+  position: absolute;
+  inset: 0 16px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-edge);
+  background: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+  animation: pulse 1.6s ease-in-out infinite;
+  transition: border-color 600ms var(--ease), background 600ms var(--ease);
+}
+.loading-backdrop.filled { animation: none; border-color: transparent; background: transparent; }
+.loading-backdrop-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  filter: saturate(0.6) brightness(0.7);
+  mask-image: radial-gradient(ellipse at center, #000 35%, transparent 85%);
+  transition: opacity 700ms var(--ease);
+}
+.loading-backdrop-img.ready { opacity: 0.55; }
+:root[data-night='true'] .loading-backdrop-img { filter: saturate(0.35) brightness(0.55); }
+.loading-body { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding: 0 24px; }
+.loading-logo {
+  width: 360px;
+  height: 120px;
+  max-width: 70vw;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  animation: pulse 1.6s ease-in-out infinite;
+  transition: border-color 500ms var(--ease), background 500ms var(--ease);
+}
+.loading-logo.filled, .loading-logo.none { animation: none; border-color: transparent; background: transparent; }
+.loading-logo-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  filter: grayscale(0.15) drop-shadow(0 4px 24px rgba(0, 0, 0, 0.5));
+  transition: opacity 500ms var(--ease);
+}
+.loading-logo-img.ready { opacity: 1; }
+.loading-name { font-family: var(--font-display); font-size: 40px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; animation: fade 400ms var(--ease); }
+.loading-episode { color: var(--text-2); }
+.loading-status { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: 13px; margin-top: 6px; }
+.loading-cancel { margin-top: 8px; }
+:root[data-motion='reduce'] .loading-screen,
+:root[data-motion='reduce'] .loading-backdrop,
+:root[data-motion='reduce'] .loading-logo { animation: none; }

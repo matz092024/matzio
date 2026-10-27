@@ -6,6 +6,7 @@ import type { MetaDetail, MetaPreview, Video } from './stremio/types'
 import { fraction, isWatched, useProgress, type WatchEntry } from './progress'
 import { useSettings } from './settings'
 import StreamPicker from './components/StreamPicker'
+import LoadingScreen from './components/LoadingScreen'
 import { devlog } from './devlog'
 
 const RESUME_MIN_SECONDS = 30
@@ -61,7 +62,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [picker, setPicker] = useState<{ target: Target; streams: AddonStream[]; hidden: number } | null>(null)
+  /** The title whose loading screen is up while streams are found and the player opens. */
+  const [loading, setLoading] = useState<Target | null>(null)
   const request = useRef(0)
+
+  const cancel = () => {
+    request.current++
+    setLoading(null)
+    setStatus({ kind: 'idle' })
+  }
 
   useEffect(() => {
     const player = window.matzio?.player
@@ -86,9 +95,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t)
   }, [status])
 
-  const start = async (target: Target, stream: AddonStream & { url: string }) => {
+  const start = async (target: Target, stream: AddonStream & { url: string }, id = ++request.current) => {
+    const stale = () => id !== request.current
     const player = window.matzio?.player
     if (!player) {
+      setLoading(null)
       setStatus({ kind: 'error', text: 'Playback works in the desktop app.' })
       return
     }
@@ -112,6 +123,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       episode: video?.episode,
       episodeTitle: video?.title ?? video?.name
     })
+    setLoading(target)
     setStatus({ kind: 'busy', text: 'Opening player…' })
     devlog('info', 'playback', `Starting ${title}`, {
       addon: stream.addon,
@@ -137,6 +149,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         avoidSdh: settings.avoidSdh
       }
     })
+    if (stale()) {
+      // Cancelled while mpv was starting.
+      if (result.ok) player.stop()
+      return
+    }
+    setLoading(null)
     if (!result.ok) devlog('error', 'playback', 'Couldn’t start playback', result.error)
     // The embedded player has its own controls on screen, so it needs no toast.
     if (result.ok) setStatus(result.embedded ? { kind: 'idle' } : { kind: 'playing', text: `Playing ${title}` })
@@ -148,18 +166,26 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const id = ++request.current
     const stale = () => id !== request.current
     try {
-      setStatus({ kind: 'busy', text: 'Finding streams…' })
       let meta = preview as MetaDetail
-      if (meta.type === 'series' && !video && !meta.videos) meta = await fetchMeta(addons, meta.type, meta.id)
+      setLoading({ meta, video })
+      setStatus({ kind: 'busy', text: 'Finding streams…' })
+      if (meta.type === 'series' && !video && !meta.videos) {
+        meta = await fetchMeta(addons, meta.type, meta.id)
+        if (stale()) return
+        // The full details can bring a backdrop or logo the catalog entry didn't have.
+        setLoading({ meta, video })
+      }
       if (stale()) return
 
       if (meta.type === 'series' && !video) {
         const next = nextUp(meta, progress.latestFor(meta.id))
         if (!next) {
+          setLoading(null)
           setStatus({ kind: 'error', text: 'No episodes are out yet.' })
           return
         }
         video = next.video
+        setLoading({ meta, video })
       }
 
       const all = await fetchStreams(addons, meta.type, video?.id ?? meta.id)
@@ -169,6 +195,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       devlog('info', 'playback', `Found ${all.length} stream(s), ${playable.length} playable, for ${meta.type} ${video?.id ?? meta.id}`)
 
       if (playable.length === 0) {
+        setLoading(null)
         setStatus({
           kind: 'error',
           text: all.length
@@ -179,14 +206,17 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         return
       }
       if (options?.choose || settings.quickPlay === 'ask') {
+        setLoading(null)
         setStatus({ kind: 'idle' })
         setPicker({ target, streams: playable, hidden: all.length - playable.length })
         return
       }
-      await start(target, playable[0])
+      await start(target, playable[0], id)
     } catch (e) {
       devlog('error', 'playback', 'Finding streams failed', e)
-      if (!stale()) setStatus({ kind: 'error', text: e instanceof Error ? e.message : 'Something went wrong.' })
+      if (stale()) return
+      setLoading(null)
+      setStatus({ kind: 'error', text: e instanceof Error ? e.message : 'Something went wrong.' })
     }
   }
 
@@ -206,7 +236,16 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           onClose={() => setPicker(null)}
         />
       )}
-      {status.kind !== 'idle' && (
+      {loading && (
+        <LoadingScreen
+          key={loading.meta.id}
+          meta={loading.meta}
+          episode={loading.video ? [episodeLabel(loading.video), loading.video.title ?? loading.video.name].filter(Boolean).join(' · ') : undefined}
+          text={status.kind === 'busy' ? status.text : 'Loading…'}
+          onCancel={cancel}
+        />
+      )}
+      {status.kind !== 'idle' && !(loading && status.kind === 'busy') && (
         <div className={`toast glass ${status.kind}`} role="status">
           {status.kind === 'busy' && <span className="spinner" aria-hidden />}
           <span>{status.text}</span>
