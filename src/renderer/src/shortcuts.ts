@@ -6,7 +6,7 @@ import { useSettings } from './settings'
 export const shortcutList: [keys: string[], action: string][] = [
   [['P'], 'Play (on a title page)'],
   [['/', 'Ctrl + F'], 'Search'],
-  [['1', '2', '3'], 'Home, Discover, Library'],
+  [['1', '2', '3'], 'Home, Discover, Watchlist'],
   [['Ctrl + ,'], 'Settings'],
   [['N'], 'Night dim on or off'],
   [['Alt + ←', 'Backspace'], 'Back'],

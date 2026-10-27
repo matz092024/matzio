@@ -26,6 +26,8 @@ Video plays in [mpv](https://mpv.io). Matzio looks for it in this order: the pat
 
 Settings → Trakt links your [Trakt.tv](https://trakt.tv) account. Once connected, every movie or episode you finish (90% watched, the same mark Continue watching uses) is added to your Trakt history. Titles finished while offline are sent later.
 
+The Watchlist (sidebar) is your Trakt watchlist. Adding or removing a movie or show in the app does the same on Trakt right away (queued and sent later when offline), and titles added or removed on trakt.tv show up in the app at start-up, every 15 minutes, and on **Sync now**. The first sync after connecting merges both lists without removing anything. Titles Trakt can't match (for example `kitsu:` ids from anime addons) stay in the app only.
+
 1. Create an API app at [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications/new). Any name works; set the redirect URI to `urn:ietf:wg:oauth:2.0:oob`.
 2. Paste its Client ID into Settings → Trakt. Apps made since October 2026 have no Client Secret (Trakt shows "Not issued… PKCE"), so leave that field empty; older apps can still paste theirs. Then click **Connect Trakt** and approve the code on trakt.tv.
 

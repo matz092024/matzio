@@ -8,7 +8,8 @@ import { log } from './devlog'
  * Trakt.tv sync. Sign-in uses Trakt's device-code flow (you approve Matzio on trakt.tv, no password
  * ever reaches the app), and finished movies and episodes are added to your Trakt history.
  * Where you are in a movie or episode is saved to Trakt's playback progress while you watch, and
- * your Trakt history and resume points are pulled back into the app.
+ * your Trakt history and resume points are pulled back into the app. The app's Watchlist is kept in
+ * step with your Trakt watchlist both ways.
  * Everything runs here in the main process so the app keys and tokens never reach the page.
  *
  * Trakt apps made since October 2026 sign in with PKCE and have no client secret, so the secret is
@@ -62,13 +63,38 @@ export interface ImportedEntry {
   updatedAt: number
 }
 
+/** A title added to or removed from the app's Watchlist, to repeat on Trakt. */
+export interface WatchlistChange {
+  type: 'movie' | 'series'
+  id: string
+  /** true to add, false to remove. */
+  add: boolean
+}
+
+/** A title on your Trakt watchlist, shaped like the app's own Watchlist entries. */
+export interface WatchlistTitle {
+  id: string
+  type: 'movie' | 'series'
+  name: string
+  poster?: string
+  releaseInfo?: string
+  addedAt: number
+}
+
+/** What the app's Watchlist needs to do to match Trakt; null when nothing changed. */
+export interface WatchlistPull {
+  add: WatchlistTitle[]
+  /** Ids removed on Trakt since the last sync. */
+  remove: string[]
+}
+
 export interface TraktStatus {
   /** A Trakt API app (at least a client id) is available. */
   configured: boolean
   /** The keys came with this build, so Settings doesn't need to ask for them. */
   builtIn: boolean
   username: string | null
-  /** Finished titles not yet sent, e.g. because the computer was offline. */
+  /** Finished titles and Watchlist changes not yet sent, e.g. because the computer was offline. */
   pending: number
   /** When your Trakt history was last pulled into the app (ISO), or null if never. */
   pulledAt: string | null
@@ -96,6 +122,17 @@ interface Stored {
   /** Trakt's last-activity stamps at the last pull, to skip pulls when nothing changed. */
   activity?: string
   pulledAt?: string
+  /** Watchlist changes not yet sent, one per title (the latest wins). */
+  watchlistQueue?: Record<string, WatchlistChange>
+  /**
+   * Titles on your Trakt watchlist as of the last sync, so a title missing from Trakt can be told
+   * apart: removed there (it was on this list) or added here and not sent yet (it wasn't).
+   * Unset until the first sync after connecting, which merges both lists.
+   */
+  watchlistKnown?: string[]
+  /** Titles Trakt couldn't find, so they're not offered to it again. */
+  watchlistUnmatched?: string[]
+  watchlistActivity?: string
 }
 
 const file = () => join(app.getPath('userData'), 'trakt.json')
@@ -162,6 +199,7 @@ export class Trakt {
   private login: { timer: NodeJS.Timeout; deadline: number } | null = null
   private flushing: Promise<void> | null = null
   private savingProgress = false
+  private flushingWatchlist: Promise<void> | null = null
   /** Trakt asked us to slow down; nothing is sent before this time. */
   private backoffUntil = 0
 
@@ -182,7 +220,7 @@ export class Trakt {
       configured: !!this.app.clientId,
       builtIn: !!BUILT_IN.clientId,
       username: this.data.tokens ? (this.data.username ?? '') : null,
-      pending: this.data.pending?.length ?? 0,
+      pending: (this.data.pending?.length ?? 0) + Object.keys(this.data.watchlistQueue ?? {}).length,
       pulledAt: this.data.tokens ? (this.data.pulledAt ?? null) : null
     }
   }
@@ -249,6 +287,7 @@ export class Trakt {
           this.onLogin({ state: 'connected', username })
           this.flush()
           this.saveProgress()
+          this.flushWatchlist()
           return
         }
         if (r.status === 418) return this.finishLogin({ state: 'denied', message: 'Access was denied on trakt.tv.' })
@@ -288,7 +327,18 @@ export class Trakt {
   async disconnect() {
     this.cancelLogin()
     const token = this.data.tokens?.access_token
-    this.update({ tokens: undefined, username: undefined, pending: [], progress: {}, activity: undefined, pulledAt: undefined })
+    this.update({
+      tokens: undefined,
+      username: undefined,
+      pending: [],
+      progress: {},
+      activity: undefined,
+      pulledAt: undefined,
+      watchlistQueue: {},
+      watchlistKnown: undefined,
+      watchlistUnmatched: undefined,
+      watchlistActivity: undefined
+    })
     if (token) {
       // Best effort: the app forgets the token either way.
       await this.request('/oauth/revoke', { token, ...this.credentials() }).catch(() => {})
@@ -528,5 +578,120 @@ export class Trakt {
     this.update({ activity: stamp, pulledAt: new Date().toISOString() })
     log('info', 'trakt', `Pulled ${out.length} watched or in-progress item(s) from Trakt`)
     return out
+  }
+
+  /** Queues a Watchlist add or removal for Trakt and sends it right away if possible. */
+  updateWatchlist(change: WatchlistChange) {
+    if (!this.data.tokens || !traktIds(change.id)) return
+    if (change.type !== 'movie' && change.type !== 'series') return
+    this.update({ watchlistQueue: { ...(this.data.watchlistQueue ?? {}), [change.id]: { type: change.type, id: change.id, add: change.add } } })
+    void this.flushWatchlist()
+  }
+
+  /** Sends waiting Watchlist changes: adds in one call, removals in another. Network failures stay queued. */
+  flushWatchlist(): Promise<void> {
+    if (this.flushingWatchlist) return this.flushingWatchlist
+    const changes = Object.values(this.data.watchlistQueue ?? {})
+    if (!this.data.tokens || changes.length === 0 || Date.now() < this.backoffUntil) return Promise.resolve()
+
+    const run = async () => {
+      const adds = changes.filter((c) => c.add)
+      const removes = changes.filter((c) => !c.add)
+      const body = (list: WatchlistChange[]) => ({
+        movies: list.filter((c) => c.type === 'movie').map((c) => ({ ids: traktIds(c.id) })),
+        shows: list.filter((c) => c.type === 'series').map((c) => ({ ids: traktIds(c.id) }))
+      })
+      for (const [list, path] of [[adds, '/sync/watchlist'], [removes, '/sync/watchlist/remove']] as const) {
+        if (list.length === 0) continue
+        let notFound: string[] = []
+        try {
+          const r = await this.authed<{ not_found?: { movies?: { ids?: TraktTitle['ids'] }[]; shows?: { ids?: TraktTitle['ids'] }[] } }>(path, body(list))
+          const nf = r.data?.not_found
+          notFound = [...(nf?.movies ?? []), ...(nf?.shows ?? [])].map((t) => stremioId(t.ids)).filter((id): id is string => !!id)
+        } catch (e) {
+          const status = e instanceof TraktError ? e.status : 0
+          log('warn', 'trakt', `Watchlist sync failed for ${list.length} title(s)`, e)
+          // Offline, rate limited or Trakt having trouble: keep them for the next try. Anything else would fail again.
+          if (status === 0 || status === 401 || status === 429 || status >= 500) return
+        }
+        const known = new Set(this.data.watchlistKnown ?? [])
+        const unmatched = new Set(this.data.watchlistUnmatched ?? [])
+        const queue = { ...(this.data.watchlistQueue ?? {}) }
+        for (const c of list) {
+          // A newer change to the same title may have arrived meanwhile; that one still needs sending.
+          if (queue[c.id]?.add === c.add) delete queue[c.id]
+          if (!c.add) known.delete(c.id)
+          else if (notFound.includes(c.id)) unmatched.add(c.id)
+          else known.add(c.id)
+        }
+        this.update({ watchlistQueue: queue, watchlistKnown: this.data.watchlistKnown && [...known], watchlistUnmatched: [...unmatched] })
+        // Trakt allows about one write a second.
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+    }
+    this.flushingWatchlist = run().finally(() => {
+      this.flushingWatchlist = null
+    })
+    return this.flushingWatchlist
+  }
+
+  /**
+   * Compares your Trakt watchlist with the app's Watchlist (`local`) and says what to add and remove
+   * here. Titles only in the app are queued to go up to Trakt. The first sync after connecting merges
+   * both lists without removing anything. Returns null when nothing changed on Trakt (unless forced).
+   */
+  async pullWatchlist(local: { id: string; type: string }[], force = false): Promise<WatchlistPull | null> {
+    if (!this.data.tokens) return null
+    // Changes made here go up first, so the list read back already has them.
+    await this.flushWatchlist()
+    const act = await this.authed<{ watchlist?: { updated_at?: string }; movies?: { watchlisted_at?: string }; shows?: { watchlisted_at?: string } }>(
+      '/sync/last_activities'
+    )
+    const a = act.data ?? {}
+    const stamp = [a.watchlist?.updated_at, a.movies?.watchlisted_at, a.shows?.watchlisted_at].join('|')
+    if (!force && this.data.watchlistKnown && stamp === this.data.watchlistActivity) return null
+
+    type Listed = { listed_at?: string; movie?: TraktTitle & { year?: number }; show?: TraktTitle & { year?: number } }
+    const [movies, shows] = await Promise.all([this.authed<Listed[]>('/sync/watchlist/movies'), this.authed<Listed[]>('/sync/watchlist/shows')])
+    const remote = new Map<string, WatchlistTitle>()
+    for (const [list, type] of [[movies.data, 'movie'], [shows.data, 'series']] as const) {
+      for (const l of list ?? []) {
+        const title = type === 'movie' ? l.movie : l.show
+        const id = stremioId(title?.ids)
+        if (!id) continue
+        remote.set(id, {
+          id,
+          type,
+          name: title?.title ?? '',
+          poster: art(title?.ids?.imdb ?? undefined).poster,
+          releaseInfo: title?.year ? String(title.year) : undefined,
+          addedAt: time(l.listed_at) || Date.now()
+        })
+      }
+    }
+
+    const queue = this.data.watchlistQueue ?? {}
+    const known = this.data.watchlistKnown ? new Set(this.data.watchlistKnown) : null
+    const unmatched = new Set(this.data.watchlistUnmatched ?? [])
+    const here = new Set(local.map((l) => l.id))
+    // On Trakt but not here: added on Trakt, unless it's waiting to be removed there.
+    const add = [...remote.values()].filter((t) => !here.has(t.id) && queue[t.id]?.add !== false)
+    const remove: string[] = []
+    const upload: WatchlistChange[] = []
+    for (const l of local) {
+      if (remote.has(l.id) || queue[l.id] || !traktIds(l.id) || (l.type !== 'movie' && l.type !== 'series')) continue
+      // Was on Trakt last time and isn't now: removed there. Otherwise it was added here and Trakt hasn't got it.
+      if (known?.has(l.id)) remove.push(l.id)
+      else if (!unmatched.has(l.id)) upload.push({ id: l.id, type: l.type, add: true })
+    }
+
+    this.update({
+      watchlistKnown: [...remote.keys()],
+      watchlistActivity: stamp,
+      watchlistQueue: { ...queue, ...Object.fromEntries(upload.map((c) => [c.id, c])) }
+    })
+    if (upload.length) void this.flushWatchlist()
+    log('info', 'trakt', `Watchlist: ${add.length} from Trakt, ${remove.length} removed on Trakt, ${upload.length} sent to Trakt`)
+    return { add, remove }
   }
 }
