@@ -288,6 +288,7 @@ input { font: inherit; color: inherit; background: none; border: 0; outline: non
 .toggle span { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--text-2); transition: transform var(--speed) var(--ease), background var(--speed) var(--ease); }
 .toggle.on { background: rgba(255, 255, 255, 0.28); }
 .toggle.on span { transform: translateX(18px); background: var(--text); }
+.toggle:disabled { opacity: 0.4; cursor: default; }
 
 /* ---------- Settings ---------- */
 .settings-group { border-radius: var(--radius-lg); padding: 20px 22px; display: flex; flex-direction: column; gap: 4px; }

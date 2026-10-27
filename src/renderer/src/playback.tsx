@@ -129,7 +129,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       headers: stream.behaviorHints?.proxyHeaders?.request,
       mpvPath: settings.mpvPath || undefined,
       embed: settings.playerMode !== 'external',
-      bufferSeconds: settings.bufferSeconds
+      bufferSeconds: settings.bufferSeconds,
+      tracks: {
+        audioLang: settings.audioLang,
+        subLang: settings.subLang,
+        subsForeignOnly: settings.subsForeignOnly,
+        avoidSdh: settings.avoidSdh
+      }
     })
     if (!result.ok) devlog('error', 'playback', 'Couldn’t start playback', result.error)
     // The embedded player has its own controls on screen, so it needs no toast.

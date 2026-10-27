@@ -5,6 +5,7 @@ import { connect, type Socket } from 'net'
 import { tmpdir } from 'os'
 import { delimiter, join } from 'path'
 import { isDevMode, log } from './devlog'
+import { langCodes, normalizeLang } from '../shared/languages'
 
 export interface PlayRequest {
   /** Echoed back with progress so the app knows which video it belongs to. */
@@ -23,6 +24,26 @@ export interface PlayRequest {
   embed?: boolean
   /** Most seconds to buffer ahead (Settings → Buffer ahead). Left out, mpv's defaults apply. */
   bufferSeconds?: number
+  /** Which audio and subtitle tracks to start with (Settings → Audio and subtitles). */
+  tracks?: TrackPrefs
+}
+
+export interface TrackPrefs {
+  /** Two-letter code; empty plays the file's default audio. */
+  audioLang: string
+  /** Two-letter code, 'off' for no subtitles, or empty for the file's default. */
+  subLang: string
+  /** Leave subtitles off when the audio is already in the subtitle language (forced ones still show). */
+  subsForeignOnly: boolean
+  /** Prefer a regular subtitle track over an SDH one in the same language. */
+  avoidSdh: boolean
+}
+
+/** A track picked by hand in the player's menus, so the app can remember the language. */
+export interface TrackChoice {
+  kind: 'audio' | 'sub'
+  /** Two-letter code where known; null when the track has no language, 'off' for subtitles off. */
+  lang: string | null
 }
 
 export interface PlayerProgress {
@@ -174,7 +195,71 @@ type MpvTrack = {
   lang?: string
   selected?: boolean
   codec?: string
+  default?: boolean
+  forced?: boolean
+  'hearing-impaired'?: boolean
+  'visual-impaired'?: boolean
   'demux-channel-count'?: number
+}
+
+/** Most files don't set mpv's hearing-impaired flag, so the track name is checked too. */
+function isSdh(t: MpvTrack): boolean {
+  return !!t['hearing-impaired'] || /\b(sdh|cc|hi|hoh)\b|hearing|deaf|closed caption/i.test(t.title ?? '')
+}
+
+/** Commentary and audio description tracks, which shouldn't be what a title starts with. */
+function isExtraAudio(t: MpvTrack): boolean {
+  return !!t['visual-impaired'] || /commentary|descriptive|audio description|\bad\b/i.test(t.title ?? '')
+}
+
+/**
+ * Corrects mpv's own pick (from --alang/--slang) once a video has loaded: the main audio over
+ * commentary or description, full subtitles in the chosen language, regular ones over SDH.
+ * Returns the track ids to switch to (-1 turns subtitles off), and whether SDH cues should be
+ * stripped from the subtitles that end up showing.
+ */
+export function refineTracks(list: MpvTrack[], prefs: TrackPrefs): { aid?: number; sid?: number; filterSdh: boolean } {
+  const audio = list.filter((t) => t.type === 'audio' && typeof t.id === 'number')
+  const subs = list.filter((t) => t.type === 'sub' && typeof t.id === 'number')
+  const out: { aid?: number; sid?: number; filterSdh: boolean } = { filterSdh: false }
+  // Same language, flagged default first, then file order.
+  const best = (tracks: MpvTrack[]) => [...tracks].sort((a, b) => Number(!!b.default) - Number(!!a.default) || a.id! - b.id!)[0]
+
+  let playing = audio.find((t) => t.selected)
+  if (playing && isExtraAudio(playing)) {
+    const alt = best(audio.filter((t) => !isExtraAudio(t) && normalizeLang(t.lang) === normalizeLang(playing!.lang)))
+    if (alt) {
+      out.aid = alt.id
+      playing = alt
+    }
+  }
+
+  if (prefs.subLang === 'off') return out
+  const shown = subs.find((t) => t.selected)
+  // Lower is better: full subtitles over forced-only ones, regular over SDH, then the file's default.
+  const rank = (t: MpvTrack) => (t.forced ? 4 : 0) + (prefs.avoidSdh && isSdh(t) ? 2 : 0) + (t.default ? 0 : 1)
+  const pick = (tracks: MpvTrack[]) => [...tracks].sort((a, b) => rank(a) - rank(b) || a.id! - b.id!)[0]
+  const switchTo = (t: MpvTrack | undefined) => {
+    const id = t?.id ?? -1
+    if (id !== (shown?.id ?? -1)) out.sid = id
+    out.filterSdh = !!t && prefs.avoidSdh && isSdh(t)
+  }
+
+  // mpv versions differ in how they weigh forced and default tracks against the language, so with a
+  // language set the choice is made here, the same on every mpv.
+  const inLang = prefs.subLang ? subs.filter((t) => normalizeLang(t.lang) === prefs.subLang) : []
+  if (inLang.length) {
+    if (prefs.subsForeignOnly && playing && normalizeLang(playing.lang) === prefs.subLang) {
+      // The audio is already in that language: only forced subtitles, for signs and foreign-language lines.
+      switchTo(pick(inLang.filter((t) => t.forced)))
+    } else {
+      switchTo(pick(inLang))
+    }
+  } else if (shown && prefs.avoidSdh && isSdh(shown)) {
+    // No track in the chosen language, so mpv's pick stands, minus SDH where there's a regular one.
+    switchTo(pick(subs.filter((t) => normalizeLang(t.lang) === normalizeLang(shown.lang) && !!t.forced === !!shown.forced)))
+  }
+  return out
 }
 
 function trackLabel(t: MpvTrack): string {
@@ -198,12 +283,19 @@ export class Player {
   private firstFrameLogged = false
   /** How often the position is reported for saving, in ms (Settings → Save progress every). */
   private progressEvery = 5000
+  /** Track preferences for the current video, and whether they've been applied to its track list yet. */
+  private prefs: TrackPrefs | null = null
+  private tracksRefined = false
+  /** The full track list from mpv, which has the flags refineTracks needs. */
+  private rawTracks: MpvTrack[] = []
 
   constructor(
     private hooks: {
       onProgress: (p: PlayerProgress) => void
       onEnded: (p: PlayerProgress & { error?: string; mpvError?: string }) => void
       onState: (s: PlayerState) => void
+      /** A track picked by hand in the player's menus. */
+      onTrackChoice?: (c: TrackChoice) => void
       /** The window handle to draw into, when the request asks to embed. */
       embedTarget: () => number | null
     }
@@ -233,6 +325,9 @@ export class Player {
     if (req.embed && !embedded) log('warn', 'mpv', 'Built-in player asked for, but the window handle was unavailable; using a separate window')
 
     this.progress = { key: req.key, position: req.start ?? 0, duration: 0 }
+    this.prefs = req.tracks ?? null
+    this.tracksRefined = false
+    this.rawTracks = []
 
     const ipcPath = isWindows
       ? `\\\\.\\pipe\\matzio-mpv-${process.pid}-${Date.now()}`
@@ -263,6 +358,12 @@ export class Player {
     if (req.bufferSeconds && req.bufferSeconds > 0) {
       const secs = Math.round(req.bufferSeconds)
       args.push('--cache=yes', `--cache-secs=${secs}`, `--demuxer-max-bytes=${bufferMiB(secs)}MiB`)
+    }
+    const prefs = req.tracks
+    if (prefs?.audioLang) args.push(`--alang=${langCodes(prefs.audioLang).join(',')}`)
+    if (prefs?.subLang === 'off') args.push('--sid=no')
+    else if (prefs?.subLang) {
+      args.push(`--slang=${langCodes(prefs.subLang).join(',')}`, `--subs-with-matching-audio=${prefs.subsForeignOnly ? 'no' : 'yes'}`)
     }
     if (req.start && req.start > 5) args.push(`--start=${Math.floor(req.start)}`)
     // A resume point from Trakt is a percentage, since the stream's exact length isn't known before it opens.
@@ -463,12 +564,41 @@ export class Player {
     this.pushState({ muted })
   }
 
-  /** `id` of -1 turns subtitles off. */
+  /** A pick from the player's menus. `id` of -1 turns subtitles off. */
   setTrack(kind: 'audio' | 'sub', id: number) {
+    this.selectTrack(kind, id)
+    // Picked by hand, so an SDH track shows as it is.
+    if (kind === 'sub') this.command('set_property', 'sub-filter-sdh', false)
+    const raw = this.rawTracks.find((t) => t.id === id && t.type === kind)
+    const lang = id < 0 ? 'off' : raw?.lang ? normalizeLang(raw.lang) : null
+    log('info', 'player', `Picked ${kind} track ${id < 0 ? 'off' : id}`, { lang })
+    this.hooks.onTrackChoice?.({ kind, lang })
+  }
+
+  private selectTrack(kind: 'audio' | 'sub', id: number) {
     this.command('set_property', kind === 'audio' ? 'aid' : 'sid', id < 0 ? 'no' : id)
     this.pushState({
       tracks: this.state.tracks.map((t) => (t.kind === kind ? { ...t, selected: t.id === id } : t))
     })
+  }
+
+  /** Once per video, after mpv has made its own pick: swap SDH, commentary and the like for the main track. */
+  private refine(list: MpvTrack[]) {
+    if (this.tracksRefined || !this.prefs) return
+    if (!list.some((t) => t.type === 'audio' || t.type === 'sub')) return
+    this.tracksRefined = true
+    const r = refineTracks(list, this.prefs)
+    log('info', 'player', 'Track preferences applied', {
+      prefs: this.prefs,
+      picked: list.filter((t) => t.selected).map((t) => `${t.type} ${t.id} ${t.lang ?? ''} ${t.title ?? ''}`.trim()),
+      switchAudio: r.aid,
+      switchSub: r.sid,
+      filterSdh: r.filterSdh
+    })
+    if (r.aid !== undefined) this.selectTrack('audio', r.aid)
+    if (r.sid !== undefined) this.selectTrack('sub', r.sid)
+    // Only SDH subtitles in that language: keep them, without the [door creaks] lines.
+    if (r.filterSdh) this.command('set_property', 'sub-filter-sdh', true)
   }
 
   /** mpv creates the IPC endpoint shortly after starting, so retry for a few seconds. */
@@ -493,6 +623,10 @@ export class Player {
       observe(6, 'paused-for-cache')
       observe(7, 'track-list')
       observe(8, 'media-title')
+      // A quick local file can finish loading before the pipe connects, missing file-loaded.
+      this.getProperty('track-list').then((list) => {
+        if (Array.isArray(list) && (list as MpvTrack[]).some((t) => t.selected)) this.refine(list as MpvTrack[])
+      })
     })
     let buffer = ''
     let lastSaved = 0
@@ -515,6 +649,11 @@ export class Player {
           done(msg.error === 'success' ? msg.data : undefined)
           continue
         }
+        // mpv has picked its tracks by now, so the preferences can refine that pick.
+        if (msg.event === 'file-loaded') {
+          this.getProperty('track-list').then((list) => Array.isArray(list) && this.refine(list as MpvTrack[]))
+          continue
+        }
         if (msg.event !== 'property-change') continue
         const { name, data } = msg
         if (name === 'time-pos' && typeof data === 'number') {
@@ -535,6 +674,7 @@ export class Player {
           // Keep the title Matzio asked for; mpv only overrides it when the file carries a better one.
           if (!this.state.title) this.state.title = data
         } else if (name === 'track-list' && Array.isArray(data)) {
+          this.rawTracks = data as MpvTrack[]
           this.state.tracks = (data as MpvTrack[])
             .filter((t) => (t.type === 'audio' || t.type === 'sub') && typeof t.id === 'number')
             .map((t) => ({ id: t.id as number, kind: t.type as 'audio' | 'sub', label: trackLabel(t), selected: !!t.selected }))

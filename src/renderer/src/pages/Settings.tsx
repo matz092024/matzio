@@ -3,6 +3,7 @@ import { useSettings, type Settings as S } from '../settings'
 import AddonsSettings from '../components/AddonsSettings'
 import PlayerSetting from '../components/PlayerSetting'
 import BufferSettings from '../components/BufferSettings'
+import TrackSettings from '../components/TrackSettings'
 import TraktSettings from '../components/TraktSettings'
 import UpdateSettings from '../components/UpdateSettings'
 import DevSettings from '../components/DevSettings'
@@ -75,6 +76,8 @@ export default function Settings() {
           </div>
         </Item>
       </section>
+
+      <TrackSettings />
 
       <TraktSettings />
 

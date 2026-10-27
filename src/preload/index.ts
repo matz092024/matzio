@@ -12,6 +12,19 @@ export interface PlayRequest {
   embed?: boolean
   /** Most seconds to buffer ahead. */
   bufferSeconds?: number
+  tracks?: TrackPrefs
+}
+
+export interface TrackPrefs {
+  audioLang: string
+  subLang: string
+  subsForeignOnly: boolean
+  avoidSdh: boolean
+}
+
+export interface TrackChoice {
+  kind: 'audio' | 'sub'
+  lang: string | null
 }
 
 export interface PlayerStats {
@@ -149,6 +162,8 @@ const api = {
     setProgressInterval: (seconds: number) => ipcRenderer.send('player:progress-interval', seconds),
     onState: (cb: (s: PlayerState) => void) => subscribe('player:state', cb),
     onNotice: (cb: (text: string) => void) => subscribe('player:notice', cb),
+    /** A track picked by hand in the player, to remember its language. */
+    onTrackChoice: (cb: (c: TrackChoice) => void) => subscribe('player:track-choice', cb),
     detect: (customPath?: string): Promise<{ path: string | null; customOk: boolean | null }> => ipcRenderer.invoke('player:detect', customPath),
     browse: (): Promise<string | null> => ipcRenderer.invoke('player:browse'),
     onProgress: (cb: (p: PlayerProgress) => void) => subscribe('player:progress', cb),
