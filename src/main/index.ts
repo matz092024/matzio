@@ -125,6 +125,8 @@ const player: Player = new Player({
     if (s.active && s.embedded) surface?.open()
     else if (!s.active) surface?.close()
   },
+  // The app window saves it as the new preferred language.
+  onTrackChoice: (c) => broadcast('player:track-choice', c),
   embedTarget: () => surface?.prepare() ?? null
 })
 
