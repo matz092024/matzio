@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ArtService, ConnectionsStatus, ServiceStatus } from '../../../preload'
 import { ArrowLeftIcon } from '../components/Icons'
+import { clearArtworkCache } from '../artwork'
 
 const SERVICES: { id: ArtService; name: string; hint: ReactNode; placeholder: string }[] = [
   {
@@ -53,6 +54,7 @@ function ServiceCard({ service, status, onChange }: { service: (typeof SERVICES)
     setBusy(false)
     onChange(r.status)
     if (r.ok) {
+      clearArtworkCache()
       setKey('')
       setEditing(false)
     } else setError(r.error)
@@ -62,6 +64,7 @@ function ServiceCard({ service, status, onChange }: { service: (typeof SERVICES)
     if (!api) return
     setError(null)
     onChange(await api.connections.remove(service.id))
+    clearArtworkCache()
   }
 
   const askForKey = status && (!status.set || status.state === 'invalid' || editing)
