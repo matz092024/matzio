@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
-import { detectMpv, Player, type PlayRequest, type PlayerState } from './player'
+import { detectMpv, Player, type PlayRequest, type PlayerEnded, type PlayerState } from './player'
 import { PlayerSurface } from './overlay'
 import { Trakt, type ProgressItem, type WatchedItem, type WatchlistChange } from './trakt'
 import { registerUpdater } from './updater'
@@ -103,13 +103,15 @@ const broadcast = (channel: string, payload: unknown) => {
 /** The embedded attempt in flight, so a player that can't embed can retry in its own window. */
 let embedAttempt: { req: PlayRequest; startedAt: number } | null = null
 
-const onEnded = (p: { key: string; position: number; duration: number; error?: string; mpvError?: string }) => {
+const onEnded = (p: PlayerEnded) => {
   const attempt = embedAttempt
   embedAttempt = null
-  // mpv quitting within a few seconds without ever opening the file usually means it
-  // couldn't draw into our window, so give the same stream its own mpv window instead.
-  if (attempt && p.duration === 0 && Date.now() - attempt.startedAt < 6000) {
-    log('warn', 'player', `Built-in player quit after ${Date.now() - attempt.startedAt} ms without opening the file; retrying in mpv's own window`, p.error ?? p.mpvError)
+  // Only a real failure gets the separate-window retry: mpv erroring or crashing before the first
+  // frame, soon after starting, usually means it couldn't draw into our window. Closing the player
+  // (Matzio's close button, Esc, or quitting mpv) is never a failure, however quickly it happens.
+  const elapsed = attempt ? Date.now() - attempt.startedAt : 0
+  if (attempt && p.reason === 'failed' && !p.started && elapsed < 6000) {
+    log('warn', 'player', `Built-in player failed after ${elapsed} ms without opening the file; retrying in mpv's own window`, p.error ?? p.mpvError)
     const retry = player.play({ ...attempt.req, embed: false })
     if (!retry.ok) log('error', 'player', 'Separate-window fallback failed too', retry.error)
     if (retry.ok) {
@@ -117,7 +119,10 @@ const onEnded = (p: { key: string; position: number; duration: number; error?: s
       broadcast('player:notice', `The built-in player couldn’t start, so mpv opened in its own window.${why}`)
       return
     }
+  } else if (attempt && p.reason !== 'failed' && !p.started) {
+    log('info', 'player', `Built-in player closed after ${elapsed} ms (${p.reason}); no fallback`)
   }
+  if (p.reason === 'failed' && !p.started && p.mpvError) broadcast('player:notice', `The player couldn’t start. mpv said: ${p.mpvError}`)
   broadcast('player:ended', p)
 }
 
@@ -139,7 +144,8 @@ ipcMain.handle('player:play', (_e, req: PlayRequest) => {
     // Whatever was starting before is being replaced on purpose, so don't retry it.
     embedAttempt = null
     const result = player.play(req)
-    embedAttempt = result.ok && result.embedded ? { req, startedAt: Date.now() } : null
+    // Settings → Fall back to a separate window can turn the retry off.
+    embedAttempt = result.ok && result.embedded && req.fallback !== false ? { req, startedAt: Date.now() } : null
     if (!result.ok) {
       surface?.close()
       log('error', 'player', 'Play request failed', result.error)

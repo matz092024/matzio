@@ -10,6 +10,8 @@ export interface PlayRequest {
   mpvPath?: string
   /** Draw inside the Matzio window instead of mpv's own window. */
   embed?: boolean
+  /** Retry in mpv's own window if the built-in player fails to start. */
+  fallback?: boolean
   /** Most seconds to buffer ahead. */
   bufferSeconds?: number
   tracks?: TrackPrefs

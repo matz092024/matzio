@@ -22,6 +22,8 @@ export interface PlayRequest {
   mpvPath?: string
   /** Draw inside the Matzio window instead of mpv's own window. */
   embed?: boolean
+  /** Retry in mpv's own window if the built-in player fails to start (Settings → Fall back to a separate window). */
+  fallback?: boolean
   /** Most seconds to buffer ahead (Settings → Buffer ahead). Left out, mpv's defaults apply. */
   bufferSeconds?: number
   /** Which audio and subtitle tracks to start with (Settings → Audio and subtitles). */
@@ -50,6 +52,17 @@ export interface PlayerProgress {
   key: string
   position: number
   duration: number
+}
+
+/** Why playback ended: Matzio stopped it, mpv was quit or reached the end, or mpv failed or crashed. */
+export type EndReason = 'stopped' | 'quit' | 'failed'
+
+export interface PlayerEnded extends PlayerProgress {
+  reason: EndReason
+  /** Whether the first frame ever played. */
+  started: boolean
+  error?: string
+  mpvError?: string
 }
 
 export interface PlayerTrack {
@@ -292,7 +305,7 @@ export class Player {
   constructor(
     private hooks: {
       onProgress: (p: PlayerProgress) => void
-      onEnded: (p: PlayerProgress & { error?: string; mpvError?: string }) => void
+      onEnded: (p: PlayerEnded) => void
       onState: (s: PlayerState) => void
       /** A track picked by hand in the player's menus. */
       onTrackChoice?: (c: TrackChoice) => void
@@ -441,7 +454,7 @@ export class Player {
       // A process that never started won't emit 'exit', so report the failure here.
       if (proc.pid === undefined && this.proc === proc) {
         this.proc = null
-        this.finish(spawnError)
+        this.finish('failed', spawnError)
       }
     })
     proc.on('exit', (code, signal) => {
@@ -450,7 +463,10 @@ export class Player {
       this.proc = null
       this.socket?.destroy()
       this.socket = null
-      this.finish(spawnError, code ? lastError(stderr) : undefined)
+      // mpv exits 0 when it's quit (q, closing its window) or the video ends, and 1-3 when it
+      // couldn't start or play the file. A signal we didn't send means it crashed.
+      const failed = !!spawnError || !!code || (code === null && !!signal)
+      this.finish(failed ? 'failed' : 'quit', spawnError, code ? lastError(stderr) : undefined)
     })
 
     this.connect(ipcPath, proc)
@@ -468,14 +484,14 @@ export class Player {
     this.socket?.destroy()
     this.socket = null
     proc.kill()
-    this.finish()
+    this.finish('stopped')
   }
 
-  private finish(error?: string, mpvError?: string) {
-    log(error || mpvError ? 'error' : 'info', 'player', `Playback ended at ${Math.round(this.progress.position)} of ${Math.round(this.progress.duration)} s`, error ?? mpvError)
+  private finish(reason: EndReason, error?: string, mpvError?: string) {
+    log(error || mpvError ? 'error' : 'info', 'player', `Playback ended (${reason}) at ${Math.round(this.progress.position)} of ${Math.round(this.progress.duration)} s`, error ?? mpvError)
     // Clear the state first: onEnded may start the same stream again in mpv's own window.
     this.pushState({ ...idleState })
-    this.hooks.onEnded({ ...this.progress, error, mpvError })
+    this.hooks.onEnded({ ...this.progress, reason, started: this.firstFrameLogged, error, mpvError })
   }
 
   /** Sends one mpv command; ignored when nothing is playing. */

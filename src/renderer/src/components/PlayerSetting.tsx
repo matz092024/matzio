@@ -42,14 +42,34 @@ export default function PlayerSetting() {
       <div>
         <div className="setting-label">Where video plays</div>
         <div className="setting-hint">
-          Built in keeps the picture inside the Matzio window with Matzio’s own controls. Separate window hands the stream to mpv
-          and lets mpv’s own keys and controls run it, which is the fallback if the built-in player misbehaves on your machine.
+          Built in keeps the picture inside the Matzio window with Matzio’s own controls. Separate window always hands the stream to
+          mpv’s own window and lets mpv’s keys and controls run it.
         </div>
         <div className="segmented glass" style={{ marginTop: 10 }}>
           <button className={integrated ? 'active' : ''} onClick={() => update({ playerMode: 'integrated' })}>Built in</button>
           <button className={!integrated ? 'active' : ''} onClick={() => update({ playerMode: 'external' })}>Separate window</button>
         </div>
       </div>
+      {integrated && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24 }}>
+          <div>
+            <div className="setting-label">Fall back to a separate window</div>
+            <div className="setting-hint">
+              If the built-in player fails to start, play the same stream in mpv’s own window. Closing the player yourself never
+              triggers this, however quickly you close it.
+            </div>
+          </div>
+          <button
+            role="switch"
+            aria-checked={settings.playerFallback}
+            aria-label="Fall back to a separate window"
+            className={`toggle ${settings.playerFallback ? 'on' : ''}`}
+            onClick={() => update({ playerFallback: !settings.playerFallback })}
+          >
+            <span />
+          </button>
+        </div>
+      )}
       <div>
         <div className="setting-label">mpv</div>
         <div className="setting-hint">

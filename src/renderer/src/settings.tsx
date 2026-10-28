@@ -12,6 +12,8 @@ export interface Settings {
   quickPlay: 'first' | 'ask'
   /** Play inside the Matzio window, or hand the stream to mpv's own window. */
   playerMode: 'integrated' | 'external'
+  /** If the built-in player fails to start, try the same stream again in mpv's own window. */
+  playerFallback: boolean
   /** Where mpv lives; empty means find it automatically. */
   mpvPath: string
   /** How often, in seconds, your place in a movie or episode is saved (and sent to Trakt). */
@@ -38,6 +40,7 @@ const defaults: Settings = {
   glass: 'normal',
   quickPlay: 'first',
   playerMode: 'integrated',
+  playerFallback: true,
   mpvPath: '',
   progressInterval: 5,
   bufferSeconds: 60,

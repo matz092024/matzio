@@ -130,6 +130,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       stream: stream.name ?? stream.title ?? '',
       resumeAt: startPercent ? `${startPercent.toFixed(1)}%` : Math.round(startAt),
       mode: settings.playerMode,
+      fallback: settings.playerFallback,
       bufferSeconds: settings.bufferSeconds
     })
     const result = await player.play({
@@ -141,6 +142,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       headers: stream.behaviorHints?.proxyHeaders?.request,
       mpvPath: settings.mpvPath || undefined,
       embed: settings.playerMode !== 'external',
+      fallback: settings.playerFallback,
       bufferSeconds: settings.bufferSeconds,
       tracks: {
         audioLang: settings.audioLang,
