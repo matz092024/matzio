@@ -122,6 +122,10 @@ async function check(service: Service) {
   update((d) => ({ ...d, checks: { ...d.checks, [service]: { state, at: new Date().toISOString() } } }))
 }
 
+/** Told when a key is saved or removed, so cached artwork can be dropped. */
+const listeners: (() => void)[] = []
+export const onKeysChange = (cb: () => void) => listeners.push(cb)
+
 export function registerConnections() {
   ipcMain.handle('connections:status', () => status())
 
@@ -132,6 +136,7 @@ export function registerConnections() {
     const state = await verify(service, key)
     if (state === 'invalid') return { ok: false as const, error: 'That key was refused. Check that it was copied in full.', status: status() }
     update((d) => ({ keys: { ...d.keys, [service]: key }, checks: { ...d.checks, [service]: { state, at: new Date().toISOString() } } }))
+    listeners.forEach((cb) => cb())
     return { ok: true as const, status: status() }
   })
 
@@ -143,6 +148,7 @@ export function registerConnections() {
       delete checks[service]
       return { keys, checks }
     })
+    listeners.forEach((cb) => cb())
     return status()
   })
 
