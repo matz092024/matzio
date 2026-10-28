@@ -6,6 +6,7 @@ import { Trakt, type ProgressItem, type WatchedItem, type WatchlistChange } from
 import { registerUpdater } from './updater'
 import { registerStore } from './store'
 import { registerConnections } from './connections'
+import { registerArtwork } from './artwork'
 import { log, mark, registerDevLog } from './devlog'
 
 // Pin the data folder to %APPDATA%\Matzio so dev runs, installs and updates all share it.
@@ -13,6 +14,7 @@ app.setPath('userData', join(app.getPath('appData'), 'Matzio'))
 registerDevLog()
 registerStore()
 registerConnections()
+registerArtwork()
 
 /** The app window. The built-in player's video and controls windows sit pinned above it. */
 let mainWindow: BrowserWindow | null = null
