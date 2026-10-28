@@ -7,6 +7,17 @@ import { delimiter, join } from 'path'
 import { isDevMode, log } from './devlog'
 import { langCodes, langName, normalizeLang } from '../shared/languages'
 
+/** The title being opened, so the player can show its art until the first frame instead of a spinner. */
+export interface PlayerArt {
+  type: string
+  id: string
+  name: string
+  background?: string
+  logo?: string
+  /** e.g. "S1 · E2 · Pilot" */
+  episode?: string
+}
+
 export interface PlayRequest {
   /** Echoed back with progress so the app knows which video it belongs to. */
   key: string
@@ -28,6 +39,7 @@ export interface PlayRequest {
   bufferSeconds?: number
   /** Which audio and subtitle tracks to start with (Settings → Audio and subtitles). */
   tracks?: TrackPrefs
+  art?: PlayerArt
 }
 
 export interface TrackPrefs {
@@ -98,6 +110,9 @@ export interface PlayerState {
   muted: boolean
   /** mpv is waiting on the network, so the controls can show a spinner. */
   buffering: boolean
+  /** The first frame has played; until then the title's art is shown. */
+  started: boolean
+  art?: PlayerArt
   tracks: PlayerTrack[]
 }
 
@@ -211,6 +226,7 @@ const idleState: PlayerState = {
   volume: 100,
   muted: false,
   buffering: false,
+  started: false,
   tracks: []
 }
 
@@ -501,6 +517,7 @@ export class Player {
       title: req.title,
       position: req.start ?? 0,
       buffering: true,
+      art: req.art,
       tracks: this.menuTracks()
     })
 
@@ -861,6 +878,7 @@ export class Player {
         if (name === 'time-pos' && this.state.buffering && !this.state.paused) this.state.buffering = false
         if (name === 'time-pos' && !this.firstFrameLogged) {
           this.firstFrameLogged = true
+          this.state.started = true
           log('info', 'mpv', `First frame after ${Date.now() - this.launchedAt} ms`)
         }
         if (name === 'paused-for-cache' && data === true && this.firstFrameLogged) log('info', 'mpv', `Buffering at ${Math.round(this.progress.position)} s`)

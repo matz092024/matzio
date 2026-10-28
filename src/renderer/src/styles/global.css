@@ -884,3 +884,5 @@ body.overlay-body { background: transparent; }
 .settings-link { text-decoration: none; color: inherit; flex: none; }
 .hero-logo-placeholder { height: 96px; }
 .detail .hero-logo { animation: fade 400ms var(--ease); }
+.loading-screen.in-player { inset: 0; z-index: 5; }
+.loading-screen.in-player .loading-backdrop { inset: 0; border-radius: 0; border: 0; }

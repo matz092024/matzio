@@ -1,5 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+/** The title being opened, so the player can show its art until the first frame instead of a spinner. */
+export interface PlayerArt {
+  type: string
+  id: string
+  name: string
+  background?: string
+  logo?: string
+  /** e.g. "S1 · E2 · Pilot" */
+  episode?: string
+}
+
 export interface PlayRequest {
   key: string
   url: string
@@ -15,6 +26,7 @@ export interface PlayRequest {
   /** Most seconds to buffer ahead. */
   bufferSeconds?: number
   tracks?: TrackPrefs
+  art?: PlayerArt
 }
 
 export interface TrackPrefs {
@@ -75,6 +87,8 @@ export interface PlayerState {
   volume: number
   muted: boolean
   buffering: boolean
+  started: boolean
+  art?: PlayerArt
   tracks: PlayerTrack[]
 }
 
