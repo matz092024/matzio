@@ -15,6 +15,7 @@ import {
 } from '../components/Icons'
 import { useSettings } from '../settings'
 import BufferPanel from './BufferPanel'
+import LoadingScreen from '../components/LoadingScreen'
 
 const HIDE_AFTER = 2800
 
@@ -38,6 +39,7 @@ const empty: PlayerState = {
   volume: 100,
   muted: false,
   buffering: true,
+  started: false,
   tracks: []
 }
 
@@ -324,6 +326,10 @@ export default function PlayerOverlay() {
           </div>
         </div>
       </div>
+      {/* Until the first frame, the title's art stands in for the black video and the spinner. */}
+      {state.active && !state.started && state.art && (
+        <LoadingScreen inPlayer meta={state.art} episode={state.art.episode} text="Buffering…" onCancel={close} />
+      )}
     </>
   )
 }

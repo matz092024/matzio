@@ -31,13 +31,16 @@ export default function LoadingScreen({
   meta,
   episode,
   text,
-  onCancel
+  onCancel,
+  inPlayer = false
 }: {
   meta: Pick<MetaPreview, 'id' | 'type' | 'name' | 'background' | 'logo'>
   /** e.g. "S1 · E2 · Pilot" */
   episode?: string
   text: string
   onCancel: () => void
+  /** Drawn in the player window over the video, which has no title bar to leave room for. */
+  inPlayer?: boolean
 }) {
   // fanart.tv / TMDB art when a key is set, falling back to the addon's art if it's missing or won't load.
   const { art, ready } = useArtwork(meta.type, meta.id)
@@ -60,7 +63,7 @@ export default function LoadingScreen({
   }, [onCancel])
 
   return (
-    <div className="loading-screen" role="status" aria-live="polite" aria-label={`Loading ${meta.name}`}>
+    <div className={`loading-screen ${inPlayer ? 'in-player' : ''}`} role="status" aria-live="polite" aria-label={`Loading ${meta.name}`}>
       <div className={`loading-backdrop ${backdropReady ? 'filled' : ''}`}>
         {background && <FadeImage key={background} className="loading-backdrop-img" src={background} onReady={mark(background)} />}
       </div>
