@@ -51,7 +51,7 @@ The look is dark, monochrome and frosted glass, with nothing flashing for attent
 
 **Sync and upkeep**
 - **Trakt.** Finished movies and episodes go to your Trakt history, your watch history and resume points come back, progress is saved on an interval you choose, and the Watchlist mirrors your Trakt watchlist both ways. Works offline: changes are queued and sent later.
-- **Connections.** Paste TMDB and fanart.tv API keys in Settings → Connections. Each key is checked before it's saved.
+- **Artwork from fanart.tv and TMDB.** With keys added under Settings → Connections, title pages and the loading screen use sharper logos, backgrounds and banners from fanart.tv, with TMDB filling the gaps. Without keys, Matzio keeps the art your addons send.
 - **Auto-update.** Installed copies check for a new build at launch and every 4 hours, download it in the background, and ask before restarting.
 - **Dev mode.** An optional log of errors and playback details to attach to a bug report.
 
@@ -110,7 +110,7 @@ Add `TRAKT_CLIENT_ID` (and `TRAKT_CLIENT_SECRET`, only if your app has one) as r
 
 </details>
 
-### TMDB and fanart.tv
+### TMDB and fanart.tv (artwork)
 
 Open **Settings → Connections** and paste your keys:
 
@@ -120,6 +120,8 @@ Open **Settings → Connections** and paste your keys:
 | [fanart.tv](https://fanart.tv) | [fanart.tv/get-an-api-key](https://fanart.tv/get-an-api-key/) | A personal API key |
 
 Matzio tests each key before saving it, so a mistyped key is refused rather than stored. Only the last four characters are ever shown back.
+
+Once a key is saved, title pages and the loading screen switch to fanart.tv logos, backgrounds and banners, with TMDB art where fanart.tv has none. fanart.tv finds series only by their TVDB id, so add a TMDB key too if you want series art. Art is cached on disk for a week and refreshed when you change a key.
 
 ## ⌨ Keyboard
 
