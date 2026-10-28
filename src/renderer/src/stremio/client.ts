@@ -1,5 +1,5 @@
 import { devlog } from '../devlog'
-import type { ContentType, InstalledAddon, Manifest, ManifestCatalog, MetaDetail, MetaPreview, Stream } from './types'
+import type { ContentType, InstalledAddon, Manifest, ManifestCatalog, MetaDetail, MetaPreview, Stream, Subtitle } from './types'
 
 /** Accepts stremio:// links, bare base URLs, and full manifest URLs. */
 export function normalizeManifestUrl(input: string): string {
@@ -113,6 +113,47 @@ export async function fetchStreams(addons: InstalledAddon[], type: ContentType, 
   )
   return results.flatMap((r, i) =>
     r.status === 'fulfilled' ? (r.value.streams ?? []).map((s) => ({ ...s, addon: sources[i].manifest.name })) : []
+  )
+}
+
+export interface AddonSubtitle extends Subtitle {
+  addon: string
+}
+
+/**
+ * Asks every subtitles addon for this video at once, and hands each addon's list to `onResult`
+ * as it arrives, so one slow addon doesn't hold back the rest. Each gets `timeoutMs` before it's
+ * given up on; failures are only logged. Resolves once every addon has answered or timed out.
+ */
+export async function fetchSubtitles(
+  addons: InstalledAddon[],
+  type: ContentType,
+  id: string,
+  extra: Extra,
+  onResult: (subs: AddonSubtitle[]) => void,
+  { timeoutMs = 8000, signal }: { timeoutMs?: number; signal?: AbortSignal } = {}
+) {
+  const sources = addons.filter((a) => supports(a, 'subtitles', type, id))
+  await Promise.allSettled(
+    sources.map(async (a) => {
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      signal?.addEventListener('abort', abort)
+      const timer = setTimeout(() => {
+        devlog('warn', 'addon', `${a.manifest.name} took over ${timeoutMs / 1000} s for subtitles; skipped`)
+        abort()
+      }, timeoutMs)
+      try {
+        const data = await getJson<{ subtitles?: Subtitle[] }>(resourceUrl(a, 'subtitles', type, id, extra), controller.signal)
+        const subs = (Array.isArray(data.subtitles) ? data.subtitles : [])
+          .filter((s) => typeof s?.url === 'string' && /^https?:\/\//.test(s.url))
+          .map((s) => ({ id: s.id, url: s.url, lang: s.lang, addon: a.manifest.name }))
+        if (!controller.signal.aborted) onResult(subs)
+      } finally {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', abort)
+      }
+    })
   )
 }
 

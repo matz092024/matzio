@@ -81,8 +81,17 @@ export interface Stream {
     bingeGroup?: string
     filename?: string
     videoSize?: number
+    /** OpenSubtitles hash of the file, which subtitle addons use to find subtitles timed to it. */
+    videoHash?: string
     proxyHeaders?: { request?: Record<string, string>; response?: Record<string, string> }
   }
+}
+
+/** One entry of a subtitles response. `lang` is usually a three-letter code like "eng". */
+export interface Subtitle {
+  id?: string
+  url: string
+  lang?: string
 }
 
 export interface InstalledAddon {

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
-import { detectMpv, Player, type PlayRequest, type PlayerEnded, type PlayerState } from './player'
+import { detectMpv, Player, type AddonSubtitle, type PlayRequest, type PlayerEnded, type PlayerState } from './player'
 import { PlayerSurface } from './overlay'
 import { Trakt, type ProgressItem, type WatchedItem, type WatchlistChange } from './trakt'
 import { registerUpdater } from './updater'
@@ -165,6 +165,7 @@ ipcMain.on('player:seek-by', (_e, seconds: number) => player.seekBy(seconds))
 ipcMain.on('player:volume', (_e, volume: number) => player.setVolume(volume))
 ipcMain.on('player:muted', (_e, muted: boolean) => player.setMuted(muted))
 ipcMain.on('player:track', (_e, kind: 'audio' | 'sub', id: number) => player.setTrack(kind, id))
+ipcMain.on('player:add-subtitles', (_e, key: string, subs: AddonSubtitle[]) => player.addSubtitles(key, subs))
 ipcMain.on('player:progress-interval', (_e, seconds: number) => player.setProgressInterval(seconds))
 ipcMain.on('player:fullscreen', (_e, full?: boolean) => {
   const win = mainWindow

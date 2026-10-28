@@ -5,7 +5,7 @@ import { connect, type Socket } from 'net'
 import { tmpdir } from 'os'
 import { delimiter, join } from 'path'
 import { isDevMode, log } from './devlog'
-import { langCodes, normalizeLang } from '../shared/languages'
+import { langCodes, langName, normalizeLang } from '../shared/languages'
 
 /** The title being opened, so the player can show its art until the first frame instead of a spinner. */
 export interface PlayerArt {
@@ -82,7 +82,20 @@ export interface PlayerTrack {
   kind: 'audio' | 'sub'
   label: string
   selected: boolean
+  /** The addon a subtitle came from; left out for tracks in the file. */
+  addon?: string
 }
+
+/** A subtitle file an addon offered for the video playing (one entry of its subtitles response). */
+export interface AddonSubtitle {
+  id?: string
+  url: string
+  lang?: string
+  addon: string
+}
+
+/** Menu ids for addon subtitles start here, well clear of mpv's own track ids. */
+const ADDON_SUB_BASE = 100000
 
 /** Everything the on-screen controls need. Pushed to the windows as it changes. */
 export interface PlayerState {
@@ -229,6 +242,19 @@ type MpvTrack = {
   'hearing-impaired'?: boolean
   'visual-impaired'?: boolean
   'demux-channel-count'?: number
+  external?: boolean
+  'external-filename'?: string
+}
+
+/** An addon subtitle as the menu offers it. It's only downloaded (added to mpv) once it's picked. */
+interface AddonSubEntry extends AddonSubtitle {
+  /** The id the menu uses. */
+  menuId: number
+  /** Two-letter code where known. */
+  langCode: string
+  label: string
+  /** mpv's track id once it's been added to the current mpv. */
+  mpvId?: number
 }
 
 /** Most files don't set mpv's hearing-impaired flag, so the track name is checked too. */
@@ -291,6 +317,25 @@ export function refineTracks(list: MpvTrack[], prefs: TrackPrefs): { aid?: numbe
   return out
 }
 
+/**
+ * Addon subtitles for the menu: the preferred language first, then by language name, each
+ * language's entries kept in the order the addons gave them and numbered when there are several
+ * from one addon ("English · OpenSubtitles", "English 2 · OpenSubtitles").
+ */
+export function addonSubEntries(subs: AddonSubtitle[], preferred: string): Omit<AddonSubEntry, 'menuId' | 'mpvId'>[] {
+  const named = subs.map((s, i) => {
+    const langCode = normalizeLang(s.lang)
+    return { ...s, langCode, name: langCode ? langName(langCode) : 'Unknown language', i }
+  })
+  named.sort((a, b) => Number(b.langCode === preferred) - Number(a.langCode === preferred) || a.name.localeCompare(b.name) || a.i - b.i)
+  const seen = new Map<string, number>()
+  return named.map(({ name, i: _i, ...s }) => {
+    const n = (seen.get(`${name}|${s.addon}`) ?? 0) + 1
+    seen.set(`${name}|${s.addon}`, n)
+    return { ...s, label: `${n > 1 ? `${name} ${n}` : name} · ${s.addon}` }
+  })
+}
+
 function trackLabel(t: MpvTrack): string {
   const parts = [t.title, t.lang?.toUpperCase(), t.codec?.toUpperCase()].filter(Boolean) as string[]
   const channels = t['demux-channel-count']
@@ -306,7 +351,7 @@ export class Player {
   private state: PlayerState = { ...idleState }
   private nextRequestId = 100
   /** get_property calls waiting on mpv's reply, by request id. */
-  private pending = new Map<number, (data: unknown) => void>()
+  private pending = new Map<number, (ok: boolean, data: unknown) => void>()
   /** When the current mpv was started, for the dev log's time-to-first-frame. */
   private launchedAt = 0
   private firstFrameLogged = false
@@ -317,6 +362,11 @@ export class Player {
   private tracksRefined = false
   /** The full track list from mpv, which has the flags refineTracks needs. */
   private rawTracks: MpvTrack[] = []
+  /** Subtitles addons offered for `addonSubsKey`. Kept across a restart of the same video (the separate-window fallback). */
+  private addonSubs: AddonSubEntry[] = []
+  private addonSubsKey = ''
+  /** Whether a subtitle was picked by hand, or an addon one already chosen for the preferred language, so it isn't picked again. */
+  private subChosen = false
 
   constructor(
     private hooks: {
@@ -357,6 +407,11 @@ export class Player {
     this.prefs = req.tracks ?? null
     this.tracksRefined = false
     this.rawTracks = []
+    this.subChosen = false
+    if (req.key !== this.addonSubsKey) this.addonSubs = []
+    this.addonSubsKey = req.key
+    // A new mpv has none of them loaded yet.
+    for (const s of this.addonSubs) s.mpvId = undefined
 
     const ipcPath = isWindows
       ? `\\\\.\\pipe\\matzio-mpv-${process.pid}-${Date.now()}`
@@ -462,7 +517,8 @@ export class Player {
       title: req.title,
       position: req.start ?? 0,
       buffering: true,
-      art: req.art
+      art: req.art,
+      tracks: this.menuTracks()
     })
 
     proc.on('error', (e) => {
@@ -520,19 +576,28 @@ export class Player {
 
   /** Asks mpv for one property; resolves to undefined if it isn't available or mpv doesn't answer. */
   private getProperty(name: string): Promise<unknown> {
+    return this.send(['get_property', name], 1000).then((r) => (r.ok ? r.data : undefined))
+  }
+
+  /** Runs one mpv command and resolves to whether it worked. sub-add waits on the download, so it gets longer. */
+  private request(...cmd: (string | number | boolean)[]): Promise<boolean> {
+    return this.send(cmd, 20000).then((r) => r.ok)
+  }
+
+  private send(cmd: (string | number | boolean)[], timeoutMs: number): Promise<{ ok: boolean; data?: unknown }> {
     const socket = this.socket
-    if (!socket || socket.destroyed) return Promise.resolve(undefined)
+    if (!socket || socket.destroyed) return Promise.resolve({ ok: false })
     const id = this.nextRequestId++
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        resolve(undefined)
-      }, 1000)
-      this.pending.set(id, (data) => {
+        resolve({ ok: false })
+      }, timeoutMs)
+      this.pending.set(id, (ok, data) => {
         clearTimeout(timer)
-        resolve(data)
+        resolve({ ok, data })
       })
-      socket.write(JSON.stringify({ command: ['get_property', name], request_id: id }) + '\n')
+      socket.write(JSON.stringify({ command: cmd, request_id: id }) + '\n')
     })
   }
 
@@ -599,20 +664,115 @@ export class Player {
 
   /** A pick from the player's menus. `id` of -1 turns subtitles off. */
   setTrack(kind: 'audio' | 'sub', id: number) {
-    this.selectTrack(kind, id)
+    const addonSub = kind === 'sub' ? this.addonSubs.find((s) => s.menuId === id) : undefined
+    if (kind === 'sub') this.subChosen = true
+    if (addonSub) this.loadAddonSub(addonSub)
+    else this.selectTrack(kind, id)
     // Picked by hand, so an SDH track shows as it is.
     if (kind === 'sub') this.command('set_property', 'sub-filter-sdh', false)
     const raw = this.rawTracks.find((t) => t.id === id && t.type === kind)
-    const lang = id < 0 ? 'off' : raw?.lang ? normalizeLang(raw.lang) : null
-    log('info', 'player', `Picked ${kind} track ${id < 0 ? 'off' : id}`, { lang })
+    const lang = id < 0 ? 'off' : addonSub ? addonSub.langCode || null : raw?.lang ? normalizeLang(raw.lang) : null
+    log('info', 'player', `Picked ${kind} track ${id < 0 ? 'off' : addonSub ? addonSub.label : id}`, { lang })
     this.hooks.onTrackChoice?.({ kind, lang })
   }
 
+  /** `id` is the menu's id; for an addon subtitle that's already been added, mpv's id for it is used. */
   private selectTrack(kind: 'audio' | 'sub', id: number) {
-    this.command('set_property', kind === 'audio' ? 'aid' : 'sid', id < 0 ? 'no' : id)
+    const addonSub = kind === 'sub' ? this.addonSubs.find((s) => s.menuId === id) : undefined
+    const mpvId = addonSub ? addonSub.mpvId : id
+    if (mpvId === undefined) return
+    this.command('set_property', kind === 'audio' ? 'aid' : 'sid', mpvId < 0 ? 'no' : mpvId)
     this.pushState({
       tracks: this.state.tracks.map((t) => (t.kind === kind ? { ...t, selected: t.id === id } : t))
     })
+  }
+
+  /** Subtitles an addon found for the video under `key`. They show in the menu straight away and download when picked. */
+  addSubtitles(key: string, subs: AddonSubtitle[]) {
+    if (!key || key !== this.addonSubsKey || !Array.isArray(subs)) return
+    const known = new Set(this.addonSubs.map((s) => s.url))
+    const fresh = subs.filter((s) => typeof s?.url === 'string' && /^https?:\/\//i.test(s.url) && !known.has(s.url))
+    if (!fresh.length) return
+    const loaded = new Map(this.addonSubs.map((s) => [s.url, s.mpvId]))
+    // Rebuilt as a whole so the order and numbering take in the new ones; menu ids follow the new order.
+    this.addonSubs = addonSubEntries([...this.addonSubs, ...fresh], this.prefs?.subLang ?? '').map((s, i) => ({
+      ...s,
+      menuId: ADDON_SUB_BASE + i,
+      mpvId: loaded.get(s.url)
+    }))
+    log('info', 'player', `${fresh.length} subtitle(s) from ${[...new Set(fresh.map((s) => s.addon))].join(', ')}`, {
+      languages: [...new Set(fresh.map((s) => normalizeLang(s.lang)))]
+    })
+    if (this.state.active) this.pushState({ tracks: this.menuTracks() })
+    this.autoPickAddonSub()
+  }
+
+  /** Adds an addon subtitle to mpv and shows it; mpv downloads the .srt/.vtt itself. Picking it again just switches back. */
+  private loadAddonSub(sub: AddonSubEntry) {
+    if (sub.mpvId !== undefined) return this.selectTrack('sub', sub.menuId)
+    this.pushState({ tracks: this.state.tracks.map((t) => (t.kind === 'sub' ? { ...t, selected: t.id === sub.menuId } : t)) })
+    this.request('sub-add', sub.url, 'select', sub.label, sub.langCode || sub.lang || '').then((ok) => {
+      if (ok) return
+      log('warn', 'player', `Couldn’t load the subtitle ${sub.label}`)
+      // Put the menu back to what mpv is really showing.
+      if (this.state.active) this.pushState({ tracks: this.menuTracks() })
+    })
+  }
+
+  /**
+   * With a subtitle language set and nothing in that language in the file, the first addon
+   * subtitle in it is shown, once per video and never over a choice made by hand.
+   */
+  private autoPickAddonSub() {
+    const prefs = this.prefs
+    if (!prefs?.subLang || prefs.subLang === 'off' || this.subChosen || !this.tracksRefined) return
+    const fileSubs = this.rawTracks.filter((t) => t.type === 'sub' && !this.addonSubFor(t))
+    if (fileSubs.some((t) => normalizeLang(t.lang) === prefs.subLang)) {
+      this.subChosen = true
+      return
+    }
+    // The audio is already in that language: refineTracks left subtitles off on purpose.
+    const audio = this.rawTracks.find((t) => t.type === 'audio' && t.selected)
+    if (prefs.subsForeignOnly && audio && normalizeLang(audio.lang) === prefs.subLang) {
+      this.subChosen = true
+      return
+    }
+    const sub = this.addonSubs.find((s) => s.langCode === prefs.subLang)
+    if (!sub) return
+    this.subChosen = true
+    log('info', 'player', `No ${prefs.subLang} subtitles in the file, so showing ${sub.label}`)
+    this.loadAddonSub(sub)
+  }
+
+  /** The addon subtitle an mpv track was added from, matched on the URL it was added with. */
+  private addonSubFor(t: MpvTrack): AddonSubEntry | undefined {
+    if (!t.external || !t['external-filename']) return undefined
+    return this.addonSubs.find((s) => s.url === t['external-filename'])
+  }
+
+  /** The menus' track list: the file's tracks, then addon subtitles (each once, whether or not it's been added to mpv). */
+  private menuTracks(): PlayerTrack[] {
+    const fromFile: PlayerTrack[] = []
+    const selectedAddonSubs = new Set<number>()
+    for (const s of this.addonSubs) s.mpvId = undefined
+    for (const t of this.rawTracks) {
+      if ((t.type !== 'audio' && t.type !== 'sub') || typeof t.id !== 'number') continue
+      const addonSub = t.type === 'sub' ? this.addonSubFor(t) : undefined
+      if (addonSub) {
+        addonSub.mpvId = t.id
+        if (t.selected) selectedAddonSubs.add(addonSub.menuId)
+        continue
+      }
+      fromFile.push({ id: t.id, kind: t.type, label: trackLabel(t), selected: !!t.selected })
+    }
+    const fromAddons = this.addonSubs.map((s) => ({
+      id: s.menuId,
+      kind: 'sub' as const,
+      label: s.label,
+      selected: selectedAddonSubs.has(s.menuId),
+      addon: s.addon
+    }))
+    return [...fromFile, ...fromAddons]
   }
 
   /** Once per video, after mpv has made its own pick: swap SDH, commentary and the like for the main track. */
@@ -620,6 +780,7 @@ export class Player {
     if (this.tracksRefined || !this.prefs) return
     if (!list.some((t) => t.type === 'audio' || t.type === 'sub')) return
     this.tracksRefined = true
+    this.rawTracks = list
     const r = refineTracks(list, this.prefs)
     log('info', 'player', 'Track preferences applied', {
       prefs: this.prefs,
@@ -632,6 +793,7 @@ export class Player {
     if (r.sid !== undefined) this.selectTrack('sub', r.sid)
     // Only SDH subtitles in that language: keep them, without the [door creaks] lines.
     if (r.filterSdh) this.command('set_property', 'sub-filter-sdh', true)
+    this.autoPickAddonSub()
   }
 
   /** mpv creates the IPC endpoint shortly after starting, so retry for a few seconds. */
@@ -679,7 +841,7 @@ export class Player {
         if (msg.request_id !== undefined && this.pending.has(msg.request_id)) {
           const done = this.pending.get(msg.request_id)!
           this.pending.delete(msg.request_id)
-          done(msg.error === 'success' ? msg.data : undefined)
+          done(msg.error === 'success', msg.error === 'success' ? msg.data : undefined)
           continue
         }
         // mpv has picked its tracks by now, so the preferences can refine that pick.
@@ -708,9 +870,7 @@ export class Player {
           if (!this.state.title) this.state.title = data
         } else if (name === 'track-list' && Array.isArray(data)) {
           this.rawTracks = data as MpvTrack[]
-          this.state.tracks = (data as MpvTrack[])
-            .filter((t) => (t.type === 'audio' || t.type === 'sub') && typeof t.id === 'number')
-            .map((t) => ({ id: t.id as number, kind: t.type as 'audio' | 'sub', label: trackLabel(t), selected: !!t.selected }))
+          this.state.tracks = this.menuTracks()
         } else {
           continue
         }

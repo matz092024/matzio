@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAddons } from './stremio/addons'
-import { fetchMeta, fetchStreams, isPlayable, type AddonStream } from './stremio/client'
+import { fetchMeta, fetchStreams, fetchSubtitles, isPlayable, type AddonStream } from './stremio/client'
 import type { MetaDetail, MetaPreview, Video } from './stremio/types'
 import { fraction, isWatched, useProgress, type WatchEntry } from './progress'
 import { useSettings } from './settings'
@@ -163,11 +163,30 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       return
     }
     setLoading(null)
+    if (result.ok) findSubtitles(target, stream, videoId)
     if (!result.ok) devlog('error', 'playback', 'Couldn’t start playback', result.error)
     // The embedded player has its own controls on screen, so it needs no toast.
     if (result.ok) setStatus(result.embedded ? { kind: 'idle' } : { kind: 'playing', text: `Playing ${title}` })
     else if (result.error === 'mpv-missing') setStatus({ kind: 'error', text: 'mpv couldn’t be found. Select mpv.exe in Settings.', settingsLink: true })
     else setStatus({ kind: 'error', text: result.error, settingsLink: true })
+  }
+
+  /**
+   * Subtitles from addons (OpenSubtitles and the like), looked up once the player is open so
+   * playback never waits on them. Each addon's list goes to the player as soon as it arrives.
+   */
+  const findSubtitles = (target: Target, stream: AddonStream, videoId: string) => {
+    const player = window.matzio?.player
+    if (!player) return
+    const hints = stream.behaviorHints
+    const extra = { videoHash: hints?.videoHash, videoSize: hints?.videoSize, filename: hints?.filename }
+    let total = 0
+    fetchSubtitles(addons, target.meta.type, videoId, extra, (subs) => {
+      total += subs.length
+      if (subs.length) player.addSubtitles(videoId, subs)
+    })
+      .then(() => devlog('info', 'playback', `Addons found ${total} subtitle(s) for ${videoId}`))
+      .catch((e) => devlog('warn', 'playback', 'Subtitle lookup failed', e))
   }
 
   const play: PlaybackContextValue['play'] = async (preview, video, options) => {

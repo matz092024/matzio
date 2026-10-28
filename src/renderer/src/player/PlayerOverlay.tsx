@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayerState, PlayerTrack } from '../../../preload'
 import {
   AudioIcon,
@@ -84,16 +84,18 @@ function TrackMenu({
               {offLabel}
             </button>
           )}
-          {tracks.map((t) => (
-            <button
-              key={t.id}
-              role="menuitemradio"
-              aria-checked={t.selected}
-              className={t.selected ? 'active' : ''}
-              onClick={() => { onPick(t.id); setOpen(false) }}
-            >
-              {t.label}
-            </button>
+          {tracks.map((t, i) => (
+            <Fragment key={t.id}>
+              {t.addon && !tracks[i - 1]?.addon && <div className="pl-menu-title pl-menu-section">From addons</div>}
+              <button
+                role="menuitemradio"
+                aria-checked={t.selected}
+                className={t.selected ? 'active' : ''}
+                onClick={() => { onPick(t.id); setOpen(false) }}
+              >
+                {t.label}
+              </button>
+            </Fragment>
           ))}
           {tracks.length === 0 && <div className="pl-menu-empty">Nothing here for this file.</div>}
         </div>
