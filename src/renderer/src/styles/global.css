@@ -881,3 +881,5 @@ body.overlay-body { background: transparent; }
 :root[data-motion='reduce'] .loading-backdrop,
 :root[data-motion='reduce'] .loading-logo { animation: none; }
 .settings-link { text-decoration: none; color: inherit; flex: none; }
+.hero-logo-placeholder { height: 96px; }
+.detail .hero-logo { animation: fade 400ms var(--ease); }

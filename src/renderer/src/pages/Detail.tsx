@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useArtwork } from '../artwork'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeftIcon, CheckIcon, ListIcon, PlayIcon, PlusIcon } from '../components/Icons'
 import { artFor } from '../components/Poster'
@@ -95,6 +96,11 @@ export default function Detail() {
   const progress = useProgress()
   const { play } = usePlayback()
   const state = useAsync(`meta|${type}|${id}|${addons.map((a) => a.transportUrl).join(',')}`, () => fetchMeta(addons, type, id), true)
+  // Loaded alongside the details, so fanart.tv / TMDB art is usually ready when they are.
+  const { art, ready } = useArtwork(type, id)
+  const [failed, setFailed] = useState<Record<string, boolean>>({})
+  const first = (...urls: (string | undefined)[]) => urls.find((u): u is string => !!u && !failed[u])
+  const fail = (url: string) => setFailed((f) => ({ ...f, [url]: true }))
 
   if (state.status === 'loading') {
     return <div className="page"><section className="detail-hero skeleton glass" /></div>
@@ -124,14 +130,19 @@ export default function Detail() {
       ? 'Resume'
       : 'Play'
   const canPlay = !isSeries || next !== null
+  const background = first(art?.background, meta.background, art?.banner)
+  // Until the sharper logo has had a moment to arrive, the logo's space is held empty.
+  const logo = ready ? first(art?.logo, meta.logo) : undefined
 
   return (
     <div className="page detail">
       <div
         className="detail-backdrop"
         aria-hidden
-        style={{ backgroundImage: meta.background ? `url("${meta.background}")` : artFor(meta.id) }}
+        style={{ backgroundImage: background ? `url("${background}"), ${artFor(meta.id)}` : artFor(meta.id) }}
       />
+      {/* A hidden copy notices when the backdrop fails, so the next one in line is used. */}
+      {background && <img hidden src={background} alt="" onError={() => fail(background)} />}
       <button className="btn btn-glass back" onClick={() => navigate(-1)}>
         <ArrowLeftIcon width={16} height={16} />
         Back
@@ -142,7 +153,13 @@ export default function Detail() {
           {meta.poster && <img src={meta.poster} alt="" onError={(e) => (e.currentTarget.style.display = 'none')} />}
         </div>
         <div className="detail-body">
-          {meta.logo ? <img className="hero-logo" src={meta.logo} alt={meta.name} /> : <h1 className="hero-title">{meta.name}</h1>}
+          {!ready ? (
+            <div className="hero-logo-placeholder" aria-hidden />
+          ) : logo ? (
+            <img key={logo} className="hero-logo" src={logo} alt={meta.name} onError={() => fail(logo)} />
+          ) : (
+            <h1 className="hero-title">{meta.name}</h1>
+          )}
           {info.length > 0 && <p className="hero-meta">{info.join(' · ')}</p>}
           {meta.genres && meta.genres.length > 0 && (
             <div className="chips">{meta.genres.map((g) => <span key={g} className="chip static">{g}</span>)}</div>

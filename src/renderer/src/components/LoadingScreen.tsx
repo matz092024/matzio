@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MetaPreview } from '../stremio/types'
-
-export interface LoadingArt {
-  background?: string
-  logo?: string
-}
+import { useArtwork } from '../artwork'
 
 /** An image that stays invisible until it has loaded, then fades in over its outline. Key it by src. */
 function FadeImage({ src, className, alt = '', onReady }: { src: string; className: string; alt?: string; onReady: (ok: boolean) => void }) {
@@ -34,26 +30,28 @@ function FadeImage({ src, className, alt = '', onReady }: { src: string; classNa
 export default function LoadingScreen({
   meta,
   episode,
-  art,
   text,
   onCancel
 }: {
-  meta: Pick<MetaPreview, 'id' | 'name' | 'background' | 'logo'>
+  meta: Pick<MetaPreview, 'id' | 'type' | 'name' | 'background' | 'logo'>
   /** e.g. "S1 · E2 · Pilot" */
   episode?: string
-  art?: LoadingArt
   text: string
   onCancel: () => void
 }) {
-  const background = art?.background ?? meta.background
-  const logo = art?.logo ?? meta.logo
+  // fanart.tv / TMDB art when a key is set, falling back to the addon's art if it's missing or won't load.
+  const { art, ready } = useArtwork(meta.type, meta.id)
   // Which image urls have finished loading (true) or failed (false).
   const [loaded, setLoaded] = useState<Record<string, boolean>>({})
+  const first = (...urls: (string | undefined)[]) => urls.find((u): u is string => !!u && loaded[u] !== false)
+  // Outlines stay up while the sharper art is on its way.
+  const background = ready ? first(art?.background, meta.background, art?.banner) : undefined
+  const logo = ready ? first(art?.logo, meta.logo) : undefined
   const mark = (src: string) => (ok: boolean) => setLoaded((l) => ({ ...l, [src]: ok }))
   const backdropReady = !!background && loaded[background] === true
   const logoReady = !!logo && loaded[logo] === true
   // With no logo (or one that won't load) the name is shown instead.
-  const noLogo = !logo || loaded[logo] === false
+  const noLogo = ready && !logo
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCancel()
@@ -68,7 +66,7 @@ export default function LoadingScreen({
       </div>
       <div className="loading-body">
         <div className={`loading-logo ${logoReady ? 'filled' : ''} ${noLogo ? 'none' : ''}`}>
-          {logo && !noLogo && <FadeImage key={logo} className="loading-logo-img" src={logo} alt={meta.name} onReady={mark(logo)} />}
+          {logo && <FadeImage key={logo} className="loading-logo-img" src={logo} alt={meta.name} onReady={mark(logo)} />}
           {noLogo && <h1 className="loading-name">{meta.name}</h1>}
         </div>
         {episode && <p className="loading-episode">{episode}</p>}

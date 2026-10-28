@@ -130,6 +130,12 @@ export interface ServiceStatus {
 
 export type ConnectionsStatus = Record<ArtService, ServiceStatus>
 
+export interface Artwork {
+  logo?: string
+  background?: string
+  banner?: string
+}
+
 export type UpdateStatus =
   | { state: 'unsupported' }
   | { state: 'idle' | 'checking' | 'up-to-date' }
@@ -210,6 +216,10 @@ const api = {
     remove: (service: ArtService): Promise<ConnectionsStatus> => ipcRenderer.invoke('connections:remove', service),
     /** Checks every saved key again. */
     check: (): Promise<ConnectionsStatus> => ipcRenderer.invoke('connections:check')
+  },
+  artwork: {
+    /** fanart.tv / TMDB art for a title; null when no key is set or the title can't be looked up. */
+    get: (type: string, id: string): Promise<Artwork | null> => ipcRenderer.invoke('artwork:get', type, id)
   },
   updates: {
     status: (): Promise<{ version: string; status: UpdateStatus }> => ipcRenderer.invoke('update:status'),
