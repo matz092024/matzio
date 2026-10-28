@@ -54,9 +54,10 @@ export const languages: Language[] = [
 ]
 
 const byCode = new Map<string, Language>()
-for (const l of languages) for (const c of [l.code, ...l.alt]) byCode.set(c, l)
+// Some addons give the language's name instead of a code.
+for (const l of languages) for (const c of [l.code, ...l.alt, l.name.toLowerCase()]) byCode.set(c, l)
 
-/** The two-letter code for a track's language tag ("eng", "en-US", "pt-BR" all work), or the tag itself if unknown. */
+/** The two-letter code for a track's language tag ("eng", "en-US", "pt-BR", "English" all work), or the tag itself if unknown. */
 export function normalizeLang(tag: string | undefined | null): string {
   const base = (tag ?? '').trim().toLowerCase().split(/[-_]/)[0]
   return byCode.get(base)?.code ?? base

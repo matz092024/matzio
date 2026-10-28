@@ -812,6 +812,7 @@ body.overlay-body { background: transparent; }
 }
 .pl-menu button:hover { background: var(--glass-fill-hover); color: var(--text); }
 .pl-menu button.active { color: var(--text); background: var(--glass-fill); }
+.pl-menu-section { margin-top: 6px; border-top: 1px solid var(--glass-edge); padding-top: 12px; }
 .pl-menu-empty { padding: 8px 10px; font-size: 12px; color: var(--text-3); }
 .dev-actions { display: flex; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
 

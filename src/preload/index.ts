@@ -53,6 +53,15 @@ export interface PlayerTrack {
   kind: 'audio' | 'sub'
   label: string
   selected: boolean
+  /** The addon a subtitle came from; left out for tracks in the file. */
+  addon?: string
+}
+
+export interface AddonSubtitle {
+  id?: string
+  url: string
+  lang?: string
+  addon: string
 }
 
 export interface PlayerState {
@@ -177,6 +186,8 @@ const api = {
     setVolume: (volume: number) => ipcRenderer.send('player:volume', volume),
     setMuted: (muted: boolean) => ipcRenderer.send('player:muted', muted),
     setTrack: (kind: 'audio' | 'sub', id: number) => ipcRenderer.send('player:track', kind, id),
+    /** Subtitles an addon has for the video playing under `key`, offered in the Subtitles menu. */
+    addSubtitles: (key: string, subs: AddonSubtitle[]) => ipcRenderer.send('player:add-subtitles', key, subs),
     /** How often the position is reported (and saved), in seconds. */
     setProgressInterval: (seconds: number) => ipcRenderer.send('player:progress-interval', seconds),
     onState: (cb: (s: PlayerState) => void) => subscribe('player:state', cb),
