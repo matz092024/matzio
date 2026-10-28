@@ -880,3 +880,4 @@ body.overlay-body { background: transparent; }
 :root[data-motion='reduce'] .loading-screen,
 :root[data-motion='reduce'] .loading-backdrop,
 :root[data-motion='reduce'] .loading-logo { animation: none; }
+.settings-link { text-decoration: none; color: inherit; flex: none; }

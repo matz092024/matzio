@@ -119,6 +119,17 @@ export type TraktLoginEvent =
   | { state: 'connected'; username: string | null }
   | { state: 'expired' | 'denied' | 'error'; message: string }
 
+export type ArtService = 'tmdb' | 'fanart'
+
+export interface ServiceStatus {
+  set: boolean
+  hint: string
+  state: 'unset' | 'ok' | 'invalid' | 'unknown'
+  checkedAt: string | null
+}
+
+export type ConnectionsStatus = Record<ArtService, ServiceStatus>
+
 export type UpdateStatus =
   | { state: 'unsupported' }
   | { state: 'idle' | 'checking' | 'up-to-date' }
@@ -190,6 +201,15 @@ const api = {
       ipcRenderer.invoke('trakt:pull-watchlist', local, force),
     onStatus: (cb: (s: TraktStatus) => void) => subscribe('trakt:status', cb),
     onLoginResult: (cb: (e: TraktLoginEvent) => void) => subscribe('trakt:login-result', cb)
+  },
+  connections: {
+    status: (): Promise<ConnectionsStatus> => ipcRenderer.invoke('connections:status'),
+    /** Checks the key with the service and saves it unless it was refused. */
+    set: (service: ArtService, key: string): Promise<{ ok: true; status: ConnectionsStatus } | { ok: false; error: string; status: ConnectionsStatus }> =>
+      ipcRenderer.invoke('connections:set', service, key),
+    remove: (service: ArtService): Promise<ConnectionsStatus> => ipcRenderer.invoke('connections:remove', service),
+    /** Checks every saved key again. */
+    check: (): Promise<ConnectionsStatus> => ipcRenderer.invoke('connections:check')
   },
   updates: {
     status: (): Promise<{ version: string; status: UpdateStatus }> => ipcRenderer.invoke('update:status'),
