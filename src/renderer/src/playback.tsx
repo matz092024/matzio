@@ -23,6 +23,11 @@ export function episodeLabel(v: Pick<Video, 'season' | 'episode'>) {
   return `S${v.season} · E${v.episode}`
 }
 
+/** "S1 · E2 · Pilot", for the loading screens. */
+export function episodeText(v: Video) {
+  return [episodeLabel(v), v.title ?? v.name].filter(Boolean).join(' · ')
+}
+
 /**
  * What Play should start for a series: the episode you're partway through,
  * otherwise the one after the last you finished, otherwise the first.
@@ -144,6 +149,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       embed: settings.playerMode !== 'external',
       fallback: settings.playerFallback,
       bufferSeconds: settings.bufferSeconds,
+      art: { type: meta.type, id: meta.id, name: meta.name, background: meta.background, logo: meta.logo, episode: video ? episodeText(video) : undefined },
       tracks: {
         audioLang: settings.audioLang,
         subLang: settings.subLang,
@@ -242,7 +248,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         <LoadingScreen
           key={loading.meta.id}
           meta={loading.meta}
-          episode={loading.video ? [episodeLabel(loading.video), loading.video.title ?? loading.video.name].filter(Boolean).join(' · ') : undefined}
+          episode={loading.video ? episodeText(loading.video) : undefined}
           text={status.kind === 'busy' ? status.text : 'Loading…'}
           onCancel={cancel}
         />
